@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 
-// ─── MOCK DATA (replace with Supabase in production) ───────────────────────
+// ─── MOCK DATA ───────────────────────────────────────────────────────────────
 const MOCK_USERS = {
   "emp001": { password: "akts2024", name: "Ahmad Razif", department: "Operations", role: "employee" },
   "emp002": { password: "akts2024", name: "Lin Wei", department: "Safety", role: "employee" },
@@ -8,19 +8,43 @@ const MOCK_USERS = {
   "admin":  { password: "admin888", name: "Admin Manager", department: "Management", role: "admin" },
 };
 
+const LANGUAGES = [
+  { code: "english",   label: "English",    native: "English",       flag: "🇬🇧" },
+  { code: "mandarin",  label: "Mandarin",   native: "普通话",         flag: "🇨🇳" },
+  { code: "tamil",     label: "Tamil",      native: "தமிழ்",          flag: "🇮🇳" },
+  { code: "burmese",   label: "Burmese",    native: "မြန်မာဘာသာ",     flag: "🇲🇲" },
+  { code: "filipino",  label: "Filipino",   native: "Filipino",      flag: "🇵🇭" },
+  { code: "malay",     label: "Malay",      native: "Bahasa Melayu", flag: "🇲🇾" },
+  { code: "bangla",    label: "Bangla",     native: "বাংলা",           flag: "🇧🇩" },
+];
+
+// Video is always English for now (captions/translation coming in a later phase)
+const VIDEO_URL = "https://www.youtube.com/embed/dQw4w9WgXcQ?enablejsapi=1";
+
+// ─── AUTO-COMPUTED MONTH/DATE — no manual editing needed each month ──────────
+function getModuleMeta() {
+  const now = new Date();
+  const monthLabel = now.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+  const id = `INT-${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  const title = `${monthLabel} Internal Training`;
+
+  // Deadline = upcoming Sunday at 11:59 PM
+  const deadlineDate = new Date(now);
+  let addDays = (7 - now.getDay()) % 7;
+  if (addDays === 0) addDays = 7;
+  deadlineDate.setDate(now.getDate() + addDays);
+  const deadline = deadlineDate.toLocaleDateString("en-US", { weekday: "long", day: "numeric", month: "long", year: "numeric" }) + " at 11:59 PM";
+
+  return { id, title, month: monthLabel, deadline };
+}
+
+const MODULE_META = getModuleMeta();
+
 const CURRENT_MODULE = {
-  id: "TBM-2025-04",
-  title: "April 2025 TBM Training",
-  titleMandarin: "2025年4月TBM培训",
-  month: "April 2025",
-  windowOpen: true, // set false to show locked screen
-  deadline: "Sunday, 27 April 2025 at 11:59 PM",
-  videos: {
-    english: "https://www.youtube.com/embed/dQw4w9WgXcQ?enablejsapi=1",
-    mandarin: "https://www.youtube.com/embed/dQw4w9WgXcQ?enablejsapi=1",
-  },
+  ...MODULE_META,
+  windowOpen: true, // set false to preview the locked screen
   checkpoints: [
-    { at: 15, question: "What is the primary purpose of a TBM (Toolbox Meeting)?", options: ["Social gathering", "Safety briefing and awareness", "Performance review", "Team lunch"], answer: 1 },
+    { at: 15, question: "What is the primary purpose of this Internal Training?", options: ["Social gathering", "Safety briefing and awareness", "Performance review", "Team lunch"], answer: 1 },
     { at: 40, question: "How often should emergency exits be checked?", options: ["Monthly", "Yearly", "Daily before work starts", "Only after incidents"], answer: 2 },
     { at: 70, question: "Who is responsible for reporting a safety hazard?", options: ["Only the supervisor", "Only the safety officer", "Every employee", "Only management"], answer: 2 },
   ],
@@ -39,788 +63,246 @@ const CURRENT_MODULE = {
 };
 
 const COMPLETIONS_KEY = "akts_completions";
+function getCompletions() { try { return JSON.parse(localStorage.getItem(COMPLETIONS_KEY) || "{}"); } catch { return {}; } }
+function saveCompletion(userId, data) { const all = getCompletions(); all[userId] = { ...all[userId], [CURRENT_MODULE.id]: data }; localStorage.setItem(COMPLETIONS_KEY, JSON.stringify(all)); }
+function getUserCompletion(userId) { const all = getCompletions(); return all[userId]?.[CURRENT_MODULE.id] || null; }
 
-function getCompletions() {
-  try { return JSON.parse(localStorage.getItem(COMPLETIONS_KEY) || "{}"); } catch { return {}; }
-}
-function saveCompletion(userId, data) {
-  const all = getCompletions();
-  all[userId] = { ...all[userId], [CURRENT_MODULE.id]: data };
-  localStorage.setItem(COMPLETIONS_KEY, JSON.stringify(all));
-}
-function getUserCompletion(userId) {
-  const all = getCompletions();
-  return all[userId]?.[CURRENT_MODULE.id] || null;
-}
-
-// ─── DESIGN TOKENS ──────────────────────────────────────────────────────────
+// ─── STYLES — clean white / blue corporate theme ─────────────────────────────
 const css = `
-  @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:ital,wght@0,300;0,400;0,500;1,300&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
   :root {
-    --ink: #0d0f14;
-    --ink2: #1a1d26;
-    --surface: #f4f2ee;
-    --gold: #c8a96e;
-    --gold2: #e8c98e;
+    --ink: #1f2329;
+    --bg: #f6f7f9;
+    --surface: #ffffff;
+    --blue: #2563eb;
+    --blue-dark: #1d4ed8;
+    --blue-light: #eff6ff;
+    --blue-border: rgba(37,99,235,0.25);
     --red: #c0392b;
-    --green: #1a7a4a;
-    --blue: #1a4a7a;
-    --muted: #6b7280;
-    --border: rgba(200,169,110,0.25);
+    --green: #15803d;
+    --muted: #667085;
+    --border: #e5e7eb;
     --radius: 12px;
-    --shadow: 0 4px 24px rgba(0,0,0,0.12);
+    --radius-lg: 18px;
   }
 
-  body {
-    font-family: 'DM Sans', sans-serif;
-    background: var(--surface);
-    color: var(--ink);
-    min-height: 100vh;
-  }
+  body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--ink); min-height: 100vh; -webkit-font-smoothing: antialiased; }
 
-  h1,h2,h3,h4 { font-family: 'Syne', sans-serif; }
+  h1,h2,h3,h4 { font-family: 'Inter', sans-serif; }
 
-  .screen {
-    min-height: 100vh;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    padding: 24px;
-    background: var(--ink);
-    position: relative;
-    overflow: hidden;
-  }
+  /* ── LOGIN ── */
+  .login-page { min-height: 100vh; background: var(--bg); display: flex; flex-direction: column; align-items: center; padding: 56px 20px 40px; }
 
-  .screen::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background: radial-gradient(ellipse at 20% 50%, rgba(200,169,110,0.08) 0%, transparent 60%),
-                radial-gradient(ellipse at 80% 20%, rgba(200,169,110,0.05) 0%, transparent 50%);
-    pointer-events: none;
-  }
+  .login-brandrow { display: flex; align-items: center; gap: 10px; margin-bottom: 36px; }
+  .login-brandrow-icon { width: 34px; height: 34px; background: var(--blue); border-radius: 9px; display: flex; align-items: center; justify-content: center; }
+  .login-brandrow-name { font-weight: 700; font-size: 16px; color: var(--ink); letter-spacing: -0.2px; }
 
-  .card {
-    background: #fff;
-    border-radius: 20px;
-    padding: 40px;
-    width: 100%;
-    max-width: 480px;
-    box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-    position: relative;
-    z-index: 1;
-  }
+  .login-card { background: var(--surface); border-radius: var(--radius-lg); padding: 40px; width: 100%; max-width: 400px; box-shadow: 0 1px 2px rgba(0,0,0,0.04), 0 8px 24px rgba(0,0,0,0.06); border: 1px solid var(--border); }
 
-  .logo-block {
-    text-align: center;
-    margin-bottom: 36px;
-  }
+  .login-card-title { font-size: 22px; font-weight: 700; color: var(--ink); margin-bottom: 4px; letter-spacing: -0.3px; text-align: center; }
+  .login-card-sub { font-size: 13px; color: var(--muted); margin-bottom: 28px; text-align: center; }
 
-  .logo-icon {
-    width: 64px;
-    height: 64px;
-    background: var(--ink);
-    border-radius: 16px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    margin-bottom: 12px;
-    border: 2px solid var(--gold);
-  }
+  .form-label { display: block; font-size: 12px; font-weight: 600; color: var(--ink); margin-bottom: 7px; }
+  .form-input { width: 100%; padding: 12px 14px; background: var(--surface); border: 1.5px solid var(--border); border-radius: var(--radius); font-size: 14px; font-family: 'Inter', sans-serif; color: var(--ink); outline: none; transition: all 0.15s; margin-bottom: 16px; }
+  .form-input::placeholder { color: #9ca3af; }
+  .form-input:focus { border-color: var(--blue); box-shadow: 0 0 0 3px var(--blue-light); }
 
-  .logo-title {
-    font-family: 'Syne', sans-serif;
-    font-size: 22px;
-    font-weight: 800;
-    color: var(--ink);
-    letter-spacing: -0.5px;
-  }
+  .btn-primary { width: 100%; padding: 12px; background: var(--blue); color: #fff; border: none; border-radius: var(--radius); font-family: 'Inter', sans-serif; font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.15s; display: flex; align-items: center; justify-content: center; gap: 8px; }
+  .btn-primary:hover { background: var(--blue-dark); }
+  .btn-primary:disabled { opacity: 0.45; cursor: not-allowed; }
 
-  .logo-sub {
-    font-size: 12px;
-    color: var(--muted);
-    letter-spacing: 2px;
-    text-transform: uppercase;
-    margin-top: 2px;
-  }
+  .btn-outline { padding: 11px 20px; background: var(--surface); color: var(--ink); border: 1.5px solid var(--border); border-radius: var(--radius); font-family: 'Inter', sans-serif; font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.15s; display: inline-flex; align-items: center; gap: 7px; }
+  .btn-outline:hover { border-color: var(--blue); color: var(--blue); }
 
-  .form-group { margin-bottom: 18px; }
+  .btn-dark { padding: 11px 20px; background: var(--ink); color: #fff; border: none; border-radius: var(--radius); font-family: 'Inter', sans-serif; font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.15s; display: inline-flex; align-items: center; gap: 7px; }
+  .btn-dark:hover { background: #000; }
 
-  label {
-    display: block;
-    font-size: 12px;
-    font-weight: 500;
-    color: var(--muted);
-    letter-spacing: 1px;
-    text-transform: uppercase;
-    margin-bottom: 6px;
-  }
+  .error-box { background: #fef2f2; border: 1px solid #fecaca; color: var(--red); padding: 10px 14px; border-radius: 10px; font-size: 13px; margin-bottom: 16px; }
 
-  input {
-    width: 100%;
-    padding: 12px 16px;
-    border: 1.5px solid #e5e7eb;
-    border-radius: var(--radius);
-    font-size: 15px;
-    font-family: 'DM Sans', sans-serif;
-    outline: none;
-    transition: border-color 0.2s;
-    background: #fafafa;
-  }
+  .login-contact { margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--border); text-align: center; font-size: 12px; color: var(--muted); line-height: 1.7; }
 
-  input:focus { border-color: var(--gold); background: #fff; }
+  .login-footer { max-width: 760px; width: 100%; margin-top: 48px; text-align: center; }
+  .login-footer-desc { font-size: 14px; color: var(--muted); line-height: 1.7; max-width: 480px; margin: 0 auto 28px; }
+  .login-footer-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; }
+  .login-footer-item { display: flex; flex-direction: column; align-items: center; gap: 8px; font-size: 12.5px; color: var(--muted); font-weight: 500; }
+  .login-footer-dot { width: 36px; height: 36px; background: var(--blue-light); border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 15px; }
 
-  .btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    padding: 14px 28px;
-    border-radius: var(--radius);
-    font-family: 'Syne', sans-serif;
-    font-size: 15px;
-    font-weight: 700;
-    cursor: pointer;
-    border: none;
-    transition: all 0.2s;
-    text-decoration: none;
-    letter-spacing: 0.3px;
-  }
+  @media (max-width: 640px) { .login-footer-grid { grid-template-columns: 1fr 1fr; } }
 
-  .btn-primary {
-    background: var(--ink);
-    color: var(--gold);
-    width: 100%;
-  }
+  /* ── TOPBAR ── */
+  .topbar { background: var(--surface); height: 56px; padding: 0 28px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 100; border-bottom: 1px solid var(--border); }
+  .topbar-left { display: flex; align-items: center; gap: 10px; }
+  .topbar-logo { width: 26px; height: 26px; background: var(--blue); border-radius: 7px; display: flex; align-items: center; justify-content: center; }
+  .topbar-name { font-weight: 700; font-size: 14px; color: var(--ink); letter-spacing: -0.2px; }
+  .topbar-right { display: flex; align-items: center; gap: 10px; }
+  .avatar { width: 28px; height: 28px; background: var(--blue-light); color: var(--blue); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 11px; }
+  .sign-out-btn { background: transparent; border: 1px solid var(--border); color: var(--muted); padding: 5px 12px; border-radius: 8px; font-size: 12px; cursor: pointer; font-family: 'Inter', sans-serif; transition: all 0.15s; }
+  .sign-out-btn:hover { border-color: var(--blue); color: var(--blue); }
 
-  .btn-primary:hover { background: #1a1d26; transform: translateY(-1px); box-shadow: 0 6px 20px rgba(0,0,0,0.2); }
+  /* ── MAIN ── */
+  .main { max-width: 800px; margin: 0 auto; padding: 32px 24px; }
+  .main-wide { max-width: 920px; margin: 0 auto; padding: 32px 24px; }
 
-  .btn-gold {
-    background: var(--gold);
-    color: var(--ink);
-  }
+  .module-card { background: var(--surface); border-radius: var(--radius-lg); padding: 26px 30px; margin-bottom: 18px; border: 1px solid var(--border); }
+  .module-tag { display: inline-flex; align-items: center; gap: 5px; background: var(--blue-light); color: var(--blue); font-size: 11px; font-weight: 700; letter-spacing: 0.5px; padding: 4px 12px; border-radius: 100px; margin-bottom: 12px; }
+  .module-title { font-size: 22px; font-weight: 700; letter-spacing: -0.3px; margin-bottom: 4px; color: var(--ink); }
+  .module-sub { font-size: 13px; color: var(--muted); }
 
-  .btn-gold:hover { background: var(--gold2); transform: translateY(-1px); }
+  .steps { display: flex; gap: 6px; margin-top: 18px; flex-wrap: wrap; }
+  .step { display: flex; align-items: center; gap: 6px; padding: 6px 13px; border-radius: 100px; font-size: 12px; font-weight: 500; border: 1.5px solid var(--border); color: var(--muted); background: var(--bg); }
+  .step.active { border-color: var(--blue); color: var(--blue); background: var(--blue-light); font-weight: 600; }
+  .step.done { border-color: #bbf7d0; color: var(--green); background: #f0fdf4; }
+  .step-num { width: 17px; height: 17px; border-radius: 50%; background: #e5e7eb; display: flex; align-items: center; justify-content: center; font-size: 9px; font-weight: 700; }
+  .step.active .step-num { background: var(--blue); color: #fff; }
+  .step.done .step-num { background: #22c55e; color: #fff; }
 
-  .btn-outline {
-    background: transparent;
-    border: 1.5px solid var(--border);
-    color: var(--ink);
-  }
+  /* ── LANGUAGE SCREEN ── */
+  .lang-page { min-height: 100vh; background: var(--bg); display: flex; align-items: center; justify-content: center; padding: 24px; }
+  .lang-card { background: var(--surface); border-radius: var(--radius-lg); padding: 40px; width: 100%; max-width: 420px; box-shadow: 0 1px 2px rgba(0,0,0,0.04), 0 8px 24px rgba(0,0,0,0.06); border: 1px solid var(--border); }
+  .lang-card-top { display: flex; align-items: center; gap: 10px; margin-bottom: 28px; justify-content: center; }
+  .lang-card-logo-icon { width: 30px; height: 30px; background: var(--blue); border-radius: 8px; display: flex; align-items: center; justify-content: center; }
+  .lang-card-name { font-weight: 700; font-size: 13px; color: var(--ink); }
 
-  .error-msg {
-    background: #fef2f2;
-    border: 1px solid #fecaca;
-    color: var(--red);
-    padding: 10px 14px;
-    border-radius: 8px;
-    font-size: 13px;
-    margin-bottom: 16px;
-  }
+  .lang-title { font-size: 21px; font-weight: 700; color: var(--ink); margin-bottom: 4px; letter-spacing: -0.3px; text-align: center; }
+  .lang-sub { font-size: 13px; color: var(--muted); margin-bottom: 22px; line-height: 1.6; text-align: center; }
 
-  /* TOPBAR */
-  .topbar {
-    background: var(--ink);
-    padding: 0 32px;
-    height: 60px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    position: sticky;
-    top: 0;
-    z-index: 100;
-  }
+  .lang-select-wrap { position: relative; margin-bottom: 16px; }
+  .lang-select { width: 100%; padding: 13px 42px 13px 14px; background: var(--surface); border: 1.5px solid var(--border); border-radius: var(--radius); font-size: 14px; font-family: 'Inter', sans-serif; color: var(--ink); font-weight: 500; outline: none; appearance: none; cursor: pointer; transition: all 0.15s; }
+  .lang-select:focus { border-color: var(--blue); box-shadow: 0 0 0 3px var(--blue-light); }
+  .lang-arrow { position: absolute; right: 14px; top: 50%; transform: translateY(-50%); pointer-events: none; color: var(--muted); }
 
-  .topbar-brand {
-    font-family: 'Syne', sans-serif;
-    font-weight: 800;
-    color: var(--gold);
-    font-size: 16px;
-    letter-spacing: -0.3px;
-  }
+  .lang-preview { display: flex; align-items: center; gap: 12px; padding: 13px 16px; background: var(--blue-light); border: 1.5px solid var(--blue-border); border-radius: var(--radius); margin-bottom: 18px; }
+  .lang-preview-flag { font-size: 24px; }
+  .lang-preview-name { font-weight: 700; font-size: 14px; color: var(--ink); }
+  .lang-preview-native { font-size: 12px; color: var(--muted); }
 
-  .topbar-user {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    font-size: 13px;
-    color: rgba(255,255,255,0.7);
-  }
+  /* ── VIDEO ── */
+  .video-wrap { position: relative; background: #000; border-radius: var(--radius-lg); overflow: hidden; aspect-ratio: 16/9; margin-bottom: 14px; }
+  .video-wrap iframe { width: 100%; height: 100%; border: none; }
+  .video-overlay { position: absolute; inset: 0; background: rgba(15,20,28,0.92); display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 14px; z-index: 10; border-radius: var(--radius-lg); }
+  .play-btn { width: 60px; height: 60px; background: var(--blue); border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.15s; border: none; font-size: 18px; color: #fff; }
+  .play-btn:hover { transform: scale(1.08); background: var(--blue-dark); }
+  .overlay-title { font-size: 18px; color: #fff; font-weight: 700; }
+  .overlay-sub { font-size: 13px; color: rgba(255,255,255,0.5); text-align: center; max-width: 280px; line-height: 1.6; }
 
-  .avatar {
-    width: 32px;
-    height: 32px;
-    background: var(--gold);
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-family: 'Syne', sans-serif;
-    font-weight: 700;
-    font-size: 13px;
-    color: var(--ink);
-  }
+  .progress-track { background: #e5e7eb; border-radius: 100px; height: 5px; width: 100%; overflow: hidden; }
+  .progress-fill { height: 100%; background: var(--blue); border-radius: 100px; transition: width 0.4s; }
 
-  /* MAIN CONTENT */
-  .main {
-    max-width: 860px;
-    margin: 0 auto;
-    padding: 40px 24px;
-  }
+  /* ── MODAL ── */
+  .modal-backdrop { position: fixed; inset: 0; background: rgba(15,20,28,0.6); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 24px; }
+  .modal { background: var(--surface); border-radius: var(--radius-lg); padding: 32px; max-width: 460px; width: 100%; box-shadow: 0 24px 64px rgba(0,0,0,0.25); }
+  .modal-badge { display: inline-flex; align-items: center; gap: 6px; background: var(--blue-light); color: var(--blue); font-size: 11px; font-weight: 700; letter-spacing: 0.5px; padding: 4px 11px; border-radius: 100px; margin-bottom: 14px; }
+  .modal-q { font-size: 17px; font-weight: 700; margin-bottom: 18px; line-height: 1.4; color: var(--ink); }
 
-  /* DEADLINE BANNER */
-  .deadline-banner {
-    background: linear-gradient(135deg, var(--ink) 0%, #1a1d26 100%);
-    border: 1px solid var(--border);
-    border-radius: 16px;
-    padding: 20px 28px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 32px;
-    flex-wrap: wrap;
-    gap: 12px;
-  }
-
-  .deadline-left { display: flex; align-items: center; gap: 14px; }
-
-  .pulse-dot {
-    width: 10px;
-    height: 10px;
-    background: #22c55e;
-    border-radius: 50%;
-    animation: pulse 2s infinite;
-    flex-shrink: 0;
-  }
-
-  @keyframes pulse {
-    0%, 100% { box-shadow: 0 0 0 0 rgba(34,197,94,0.4); }
-    50% { box-shadow: 0 0 0 8px rgba(34,197,94,0); }
-  }
-
-  .deadline-title { font-family: 'Syne', sans-serif; font-size: 14px; font-weight: 700; color: #fff; }
-  .deadline-sub { font-size: 12px; color: rgba(255,255,255,0.5); margin-top: 2px; }
-
-  .countdown {
-    font-family: 'Syne', sans-serif;
-    font-size: 22px;
-    font-weight: 800;
-    color: var(--gold);
-    letter-spacing: -1px;
-  }
-
-  /* MODULE CARD */
-  .module-header {
-    background: #fff;
-    border-radius: 20px;
-    padding: 32px;
-    margin-bottom: 24px;
-    border: 1px solid #eee;
-  }
-
-  .module-tag {
-    display: inline-block;
-    background: var(--ink);
-    color: var(--gold);
-    font-size: 11px;
-    font-family: 'Syne', sans-serif;
-    font-weight: 700;
-    letter-spacing: 2px;
-    text-transform: uppercase;
-    padding: 4px 12px;
-    border-radius: 100px;
-    margin-bottom: 12px;
-  }
-
-  .module-title {
-    font-size: 26px;
-    font-weight: 800;
-    letter-spacing: -0.5px;
-    margin-bottom: 6px;
-  }
-
-  .module-steps {
-    display: flex;
-    gap: 8px;
-    margin-top: 24px;
-    flex-wrap: wrap;
-  }
-
-  .step-pill {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 8px 14px;
-    border-radius: 100px;
-    font-size: 12px;
-    font-weight: 500;
-    border: 1.5px solid #e5e7eb;
-    color: var(--muted);
-    background: #fafafa;
-  }
-
-  .step-pill.active { border-color: var(--gold); color: var(--ink); background: #fffbf5; font-weight: 600; }
-  .step-pill.done { border-color: #bbf7d0; color: var(--green); background: #f0fdf4; }
-
-  .step-num {
-    width: 20px;
-    height: 20px;
-    border-radius: 50%;
-    background: #e5e7eb;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 10px;
-    font-weight: 700;
-    font-family: 'Syne', sans-serif;
-  }
-
-  .step-pill.active .step-num { background: var(--gold); color: var(--ink); }
-  .step-pill.done .step-num { background: #22c55e; color: #fff; }
-
-  /* LANGUAGE SELECTOR */
-  .lang-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 16px;
-    margin-top: 24px;
-  }
-
-  .lang-card {
-    border: 2px solid #e5e7eb;
-    border-radius: 16px;
-    padding: 28px 20px;
-    text-align: center;
-    cursor: pointer;
-    transition: all 0.2s;
-    background: #fff;
-  }
-
-  .lang-card:hover { border-color: var(--gold); transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.08); }
-  .lang-card.selected { border-color: var(--gold); background: #fffbf5; }
-
-  .lang-flag { font-size: 36px; margin-bottom: 8px; }
-  .lang-name { font-family: 'Syne', sans-serif; font-size: 16px; font-weight: 700; }
-  .lang-native { font-size: 13px; color: var(--muted); margin-top: 2px; }
-
-  /* VIDEO PLAYER */
-  .video-wrap {
-    position: relative;
-    background: #000;
-    border-radius: 16px;
-    overflow: hidden;
-    aspect-ratio: 16/9;
-    margin-bottom: 20px;
-  }
-
-  .video-wrap iframe {
-    width: 100%;
-    height: 100%;
-    border: none;
-  }
-
-  .video-overlay {
-    position: absolute;
-    inset: 0;
-    background: rgba(0,0,0,0.85);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-direction: column;
-    gap: 16px;
-    z-index: 10;
-    border-radius: 16px;
-  }
-
-  .overlay-icon { font-size: 48px; }
-  .overlay-title { font-family: 'Syne', sans-serif; font-size: 20px; color: #fff; font-weight: 700; }
-  .overlay-sub { font-size: 14px; color: rgba(255,255,255,0.6); text-align: center; max-width: 320px; }
-
-  .progress-track {
-    background: #e5e7eb;
-    border-radius: 100px;
-    height: 6px;
-    width: 100%;
-    overflow: hidden;
-    margin-bottom: 8px;
-  }
-
-  .progress-fill {
-    height: 100%;
-    background: linear-gradient(90deg, var(--gold), var(--gold2));
-    border-radius: 100px;
-    transition: width 0.3s;
-  }
-
-  /* CHECKPOINT MODAL */
-  .modal-backdrop {
-    position: fixed;
-    inset: 0;
-    background: rgba(0,0,0,0.7);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 1000;
-    padding: 24px;
-  }
-
-  .modal {
-    background: #fff;
-    border-radius: 20px;
-    padding: 36px;
-    max-width: 500px;
-    width: 100%;
-    box-shadow: 0 30px 80px rgba(0,0,0,0.4);
-  }
-
-  .modal-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    background: #fffbf5;
-    border: 1px solid var(--gold);
-    color: var(--gold);
-    font-size: 11px;
-    font-family: 'Syne', sans-serif;
-    font-weight: 700;
-    letter-spacing: 1.5px;
-    text-transform: uppercase;
-    padding: 4px 12px;
-    border-radius: 100px;
-    margin-bottom: 16px;
-  }
-
-  .modal-q {
-    font-family: 'Syne', sans-serif;
-    font-size: 19px;
-    font-weight: 700;
-    margin-bottom: 20px;
-    line-height: 1.4;
-    color: var(--ink);
-  }
-
-  .option-btn {
-    width: 100%;
-    text-align: left;
-    padding: 14px 18px;
-    border: 2px solid #e5e7eb;
-    border-radius: 12px;
-    margin-bottom: 10px;
-    cursor: pointer;
-    font-size: 14px;
-    font-family: 'DM Sans', sans-serif;
-    background: #fff;
-    transition: all 0.15s;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    color: var(--ink);
-  }
-
-  .option-btn:hover { border-color: var(--gold); background: #fffbf5; }
-  .option-btn.selected { border-color: var(--gold); background: #fffbf5; }
+  .option-btn { width: 100%; text-align: left; padding: 12px 15px; border: 1.5px solid var(--border); border-radius: var(--radius); margin-bottom: 8px; cursor: pointer; font-size: 13.5px; font-family: 'Inter', sans-serif; background: var(--surface); transition: all 0.15s; display: flex; align-items: center; gap: 10px; color: var(--ink); font-weight: 500; }
+  .option-btn:hover { border-color: var(--blue); background: var(--blue-light); }
+  .option-btn.selected { border-color: var(--blue); background: var(--blue-light); }
   .option-btn.correct { border-color: #22c55e; background: #f0fdf4; color: var(--green); }
   .option-btn.wrong { border-color: #ef4444; background: #fef2f2; color: var(--red); }
+  .option-letter { width: 24px; height: 24px; border-radius: 6px; background: var(--bg); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 10px; flex-shrink: 0; }
 
-  .option-letter {
-    width: 28px;
-    height: 28px;
-    border-radius: 8px;
-    background: #f3f4f6;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-weight: 700;
-    font-size: 12px;
-    font-family: 'Syne', sans-serif;
-    flex-shrink: 0;
-  }
+  /* ── QUIZ ── */
+  .quiz-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; flex-wrap: wrap; gap: 10px; }
+  .q-counter { font-size: 11px; font-weight: 700; color: var(--muted); letter-spacing: 0.5px; text-transform: uppercase; }
+  .q-badge { background: var(--blue-light); color: var(--blue); padding: 4px 13px; border-radius: 100px; font-size: 11px; font-weight: 700; }
 
-  /* QUIZ */
-  .quiz-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 24px;
-    flex-wrap: wrap;
-    gap: 12px;
-  }
-
-  .q-counter {
-    font-family: 'Syne', sans-serif;
-    font-size: 13px;
-    font-weight: 700;
-    color: var(--muted);
-    letter-spacing: 1px;
-    text-transform: uppercase;
-  }
-
-  .q-score-badge {
-    background: var(--ink);
-    color: var(--gold);
-    padding: 4px 14px;
-    border-radius: 100px;
-    font-size: 13px;
-    font-family: 'Syne', sans-serif;
-    font-weight: 700;
-  }
-
-  /* RESULTS */
-  .result-circle {
-    width: 120px;
-    height: 120px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-direction: column;
-    margin: 0 auto 24px;
-    font-family: 'Syne', sans-serif;
-    font-weight: 800;
-    font-size: 32px;
-  }
-
+  .result-circle { width: 104px; height: 104px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-direction: column; margin: 0 auto 22px; font-weight: 800; font-size: 26px; }
   .result-circle.pass { background: #f0fdf4; color: var(--green); border: 3px solid #22c55e; }
   .result-circle.fail { background: #fef2f2; color: var(--red); border: 3px solid #ef4444; }
 
-  /* ACKNOWLEDGEMENT */
-  .ack-box {
-    background: linear-gradient(135deg, var(--ink), #1a1d26);
-    border-radius: 20px;
-    padding: 36px;
-    text-align: center;
-    color: #fff;
-    margin-bottom: 24px;
-    border: 1px solid var(--border);
-    position: relative;
-    overflow: hidden;
-  }
+  /* ── ACK ── */
+  .ack-hero { background: var(--blue-light); border-radius: var(--radius-lg); padding: 32px; text-align: center; color: var(--ink); margin-bottom: 18px; border: 1px solid var(--blue-border); }
+  .ack-icon { font-size: 40px; margin-bottom: 10px; }
+  .ack-title { font-size: 22px; font-weight: 700; margin-bottom: 8px; color: var(--blue-dark); letter-spacing: -0.3px; }
+  .ack-sub { color: var(--muted); font-size: 14px; line-height: 1.7; }
 
-  .ack-box::before {
-    content: '✓';
-    position: absolute;
-    font-size: 200px;
-    color: rgba(200,169,110,0.04);
-    top: -30px;
-    right: -20px;
-    font-family: 'Syne', sans-serif;
-    font-weight: 800;
-  }
+  .cert-block { background: var(--surface); border: 1.5px solid var(--blue-border); border-radius: var(--radius-lg); padding: 26px; text-align: center; margin-bottom: 18px; position: relative; }
+  .cert-block::after { content: ''; position: absolute; inset: 7px; border: 1px dashed var(--blue-border); border-radius: 14px; pointer-events: none; }
+  .cert-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 8px; }
+  .cert-name { font-size: 20px; font-weight: 700; margin: 4px 0; letter-spacing: -0.3px; }
+  .cert-detail { font-size: 13px; color: var(--muted); margin-bottom: 3px; }
 
-  .ack-icon { font-size: 48px; margin-bottom: 12px; }
-  .ack-title { font-family: 'Syne', sans-serif; font-size: 24px; font-weight: 800; margin-bottom: 8px; }
-  .ack-sub { color: rgba(255,255,255,0.6); font-size: 14px; line-height: 1.6; }
-
-  .cert-block {
-    background: #fff;
-    border: 2px solid var(--border);
-    border-radius: 16px;
-    padding: 28px;
-    text-align: center;
-    margin-bottom: 20px;
-    position: relative;
-  }
-
-  .cert-block::before {
-    content: '';
-    position: absolute;
-    inset: 6px;
-    border: 1px dashed var(--border);
-    border-radius: 12px;
-    pointer-events: none;
-  }
-
-  .cert-name { font-family: 'Syne', sans-serif; font-size: 22px; font-weight: 800; margin: 8px 0 4px; }
-  .cert-detail { font-size: 13px; color: var(--muted); margin-bottom: 4px; }
-
-  /* ADMIN */
-  .admin-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 20px;
-    margin-bottom: 32px;
-  }
-
-  .stat-card {
-    background: #fff;
-    border-radius: 16px;
-    padding: 24px;
-    border: 1px solid #eee;
-  }
-
-  .stat-num {
-    font-family: 'Syne', sans-serif;
-    font-size: 36px;
-    font-weight: 800;
-    color: var(--ink);
-    line-height: 1;
-    margin-bottom: 4px;
-  }
-
-  .stat-num.gold { color: var(--gold); }
+  /* ── ADMIN ── */
+  .admin-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 14px; margin-bottom: 24px; }
+  .stat-card { background: var(--surface); border-radius: var(--radius-lg); padding: 20px 22px; border: 1px solid var(--border); }
+  .stat-num { font-size: 32px; font-weight: 800; line-height: 1; margin-bottom: 4px; letter-spacing: -0.5px; color: var(--ink); }
+  .stat-num.blue { color: var(--blue); }
   .stat-num.green { color: var(--green); }
   .stat-num.red { color: var(--red); }
+  .stat-label { font-size: 12px; color: var(--muted); font-weight: 500; }
 
-  .stat-label { font-size: 13px; color: var(--muted); }
-
-  table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 14px;
-  }
-
-  th {
-    text-align: left;
-    padding: 10px 16px;
-    font-family: 'Syne', sans-serif;
-    font-size: 11px;
-    font-weight: 700;
-    letter-spacing: 1.5px;
-    text-transform: uppercase;
-    color: var(--muted);
-    background: #f9fafb;
-    border-bottom: 1px solid #eee;
-  }
-
-  td { padding: 12px 16px; border-bottom: 1px solid #f3f4f6; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; padding: 10px 16px; font-size: 10px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--muted); background: #fafbfc; border-bottom: 1px solid var(--border); }
+  td { padding: 13px 16px; border-bottom: 1px solid #f1f2f4; }
   tr:last-child td { border-bottom: none; }
+  tr:hover td { background: #fafbfc; }
 
-  .badge {
-    display: inline-block;
-    padding: 3px 10px;
-    border-radius: 100px;
-    font-size: 11px;
-    font-weight: 600;
-  }
-
+  .badge { display: inline-block; padding: 3px 10px; border-radius: 100px; font-size: 11px; font-weight: 600; }
   .badge-green { background: #dcfce7; color: var(--green); }
   .badge-red { background: #fee2e2; color: var(--red); }
-  .badge-yellow { background: #fef3c7; color: #92400e; }
 
-  /* LOCKED SCREEN */
-  .locked-icon {
-    width: 80px;
-    height: 80px;
-    background: rgba(200,169,110,0.1);
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    margin: 0 auto 20px;
-    font-size: 32px;
-    border: 2px solid var(--border);
-  }
+  .form-label-light { display: block; font-size: 12px; font-weight: 600; color: var(--ink); margin-bottom: 7px; }
+  .form-input-light { width: 100%; padding: 12px 14px; background: var(--surface); border: 1.5px solid var(--border); border-radius: var(--radius); font-size: 14px; font-family: 'Inter', sans-serif; color: var(--ink); outline: none; transition: all 0.15s; margin-bottom: 16px; }
+  .form-input-light:focus { border-color: var(--blue); box-shadow: 0 0 0 3px var(--blue-light); }
 
-  /* SECTION TITLE */
-  .section-title {
-    font-family: 'Syne', sans-serif;
-    font-size: 20px;
-    font-weight: 800;
-    margin-bottom: 4px;
-    letter-spacing: -0.3px;
-  }
+  /* ── LOCKED ── */
+  .locked-icon { width: 68px; height: 68px; background: var(--blue-light); border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 18px; font-size: 26px; border: 1.5px solid var(--blue-border); }
 
-  .section-sub { font-size: 14px; color: var(--muted); margin-bottom: 24px; }
-
-  /* UTILS */
-  .text-center { text-align: center; }
-  .mt-8 { margin-top: 8px; }
-  .mt-16 { margin-top: 16px; }
-  .mt-24 { margin-top: 24px; }
-  .mt-32 { margin-top: 32px; }
-  .flex { display: flex; }
-  .items-center { align-items: center; }
-  .justify-between { justify-content: space-between; }
-  .gap-12 { gap: 12px; }
-  .w-full { width: 100%; }
-
-  .divider {
-    height: 1px;
-    background: #f0f0f0;
-    margin: 20px 0;
-  }
+  .divider { height: 1px; background: var(--border); margin: 18px 0; }
 
   @media (max-width: 600px) {
-    .card { padding: 28px 22px; }
-    .main { padding: 24px 16px; }
-    .topbar { padding: 0 16px; }
-    .deadline-banner { flex-direction: column; }
-    .module-steps { flex-direction: column; }
-    .lang-grid { grid-template-columns: 1fr; }
-    .admin-grid { grid-template-columns: 1fr 1fr; }
-    .module-title { font-size: 20px; }
+    .main, .main-wide { padding: 18px 14px; }
+    .topbar { padding: 0 14px; }
+    .module-card { padding: 18px; }
+    .module-title { font-size: 19px; }
+    .lang-card, .login-card { padding: 26px 22px; }
+    .admin-stats { grid-template-columns: 1fr 1fr; }
+    .steps { flex-direction: column; }
+    th:nth-child(n+5), td:nth-child(n+5) { display: none; }
   }
 `;
 
-// ─── COMPONENTS ─────────────────────────────────────────────────────────────
-
-function Logo({ size = "md" }) {
+// ─── COMPONENTS ──────────────────────────────────────────────────────────────
+function LogoIcon({ size = 26, color = "#fff" }) {
+  const s = size * 0.62;
   return (
-    <div className="logo-block">
-      <div className="logo-icon">
-        <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
-          <rect x="4" y="8" width="10" height="3" rx="1.5" fill="#c8a96e"/>
-          <rect x="4" y="14" width="16" height="3" rx="1.5" fill="#c8a96e"/>
-          <rect x="4" y="20" width="12" height="3" rx="1.5" fill="#c8a96e"/>
-          <circle cx="25" cy="10" r="5" stroke="#c8a96e" strokeWidth="2"/>
-          <path d="M23 10l1.5 1.5L27 8.5" stroke="#c8a96e" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-        </svg>
-      </div>
-      <div className="logo-title">AKTS Training Hub</div>
-      <div className="logo-sub">Learning Management Portal</div>
-    </div>
+    <svg width={s} height={s} viewBox="0 0 20 20" fill="none">
+      <rect x="2" y="5" width="7" height="2" rx="1" fill={color}/>
+      <rect x="2" y="9" width="11" height="2" rx="1" fill={color}/>
+      <rect x="2" y="13" width="8" height="2" rx="1" fill={color}/>
+      <circle cx="15" cy="7" r="3.5" stroke={color} strokeWidth="1.5"/>
+      <path d="M13.5 7l1 1 2-2" stroke={color} strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
   );
 }
 
 function TopBar({ user, onLogout, onAdmin }) {
   return (
     <div className="topbar">
-      <div className="topbar-brand">AKTS Training Hub</div>
-      <div className="topbar-user">
-        {user.role === "admin" && (
-          <button className="btn btn-gold" style={{padding:"6px 14px", fontSize:"12px"}} onClick={onAdmin}>
-            Admin Panel
-          </button>
-        )}
-        <span style={{color:"rgba(255,255,255,0.5)", fontSize:"12px"}}>{user.name}</span>
-        <div className="avatar">{user.name.split(" ").map(w=>w[0]).join("").slice(0,2)}</div>
-        <button onClick={onLogout} style={{background:"none",border:"1px solid rgba(255,255,255,0.15)",color:"rgba(255,255,255,0.5)",padding:"6px 12px",borderRadius:"8px",cursor:"pointer",fontSize:"12px"}}>
-          Sign Out
-        </button>
+      <div className="topbar-left">
+        <div className="topbar-logo"><LogoIcon size={26}/></div>
+        <div className="topbar-name">AKTS Training Hub</div>
+      </div>
+      <div className="topbar-right">
+        {user?.role === "admin" && <button className="btn-dark" style={{padding:"5px 13px",fontSize:"12px"}} onClick={onAdmin}>Admin Panel</button>}
+        <span style={{fontSize:"13px",color:"var(--muted)"}}>{user?.name}</span>
+        <div className="avatar">{user?.name?.split(" ").map(w=>w[0]).join("").slice(0,2)}</div>
+        <button className="sign-out-btn" onClick={onLogout}>Sign Out</button>
       </div>
     </div>
   );
 }
 
-function CountdownTimer({ deadline }) {
-  const [time, setTime] = useState("47:58:12");
-  useEffect(() => {
-    let h = 47, m = 58, s = 12;
-    const t = setInterval(() => {
-      s--; if(s<0){s=59;m--;} if(m<0){m=59;h--;} if(h<0){h=0;m=0;s=0;}
-      setTime(`${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`);
-    }, 1000);
-    return () => clearInterval(t);
-  }, []);
-  return <div className="countdown">{time}</div>;
-}
-
 function StepIndicator({ current }) {
-  const steps = [
-    { id: 1, label: "Language" },
-    { id: 2, label: "Video" },
-    { id: 3, label: "Quiz" },
-    { id: 4, label: "Complete" },
-  ];
+  const steps = [{id:1,label:"Language"},{id:2,label:"Video"},{id:3,label:"Quiz"},{id:4,label:"Complete"}];
   return (
-    <div className="module-steps">
+    <div className="steps">
       {steps.map(s => (
-        <div key={s.id} className={`step-pill ${current === s.id ? "active" : current > s.id ? "done" : ""}`}>
-          <div className="step-num">{current > s.id ? "✓" : s.id}</div>
+        <div key={s.id} className={`step ${current===s.id?"active":current>s.id?"done":""}`}>
+          <div className="step-num">{current>s.id?"✓":s.id}</div>
           {s.label}
         </div>
       ))}
@@ -828,8 +310,7 @@ function StepIndicator({ current }) {
   );
 }
 
-// ─── SCREENS ────────────────────────────────────────────────────────────────
-
+// ─── SCREENS ─────────────────────────────────────────────────────────────────
 function LoginScreen({ onLogin }) {
   const [id, setId] = useState("");
   const [pw, setPw] = useState("");
@@ -843,83 +324,47 @@ function LoginScreen({ onLogin }) {
       const user = MOCK_USERS[id.trim().toLowerCase()];
       if (!user || user.password !== pw) { setErr("Invalid Employee ID or password. Please try again."); return; }
       onLogin({ ...user, id: id.trim().toLowerCase() });
-    }, 700);
+    }, 600);
   };
 
   return (
     <>
       <style>{css}</style>
-      <div className="screen">
-        <div className="card">
-          <Logo />
-          {err && <div className="error-msg">⚠ {err}</div>}
-          <div className="form-group">
-            <label>Employee ID</label>
-            <input placeholder="e.g. emp001" value={id} onChange={e=>setId(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handle()} />
-          </div>
-          <div className="form-group">
-            <label>Password</label>
-            <input type="password" placeholder="Enter your password" value={pw} onChange={e=>setPw(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handle()} />
-          </div>
-          <button className="btn btn-primary" onClick={handle} disabled={loading}>
-            {loading ? "Verifying…" : "Sign In →"}
-          </button>
-          <div style={{textAlign:"center",marginTop:"20px",fontSize:"12px",color:"var(--muted)"}}>
-            🔒 This portal is for AKTS employees only.<br/>Contact HR if you need access.
-          </div>
-          <div className="divider"/>
-          <div style={{fontSize:"11px",color:"#ccc",textAlign:"center",lineHeight:"1.6"}}>
-            <strong>Demo logins:</strong><br/>
-            emp001 / akts2024 &nbsp;|&nbsp; emp002 / akts2024<br/>
-            admin / admin888
+      <div className="login-page">
+        <div className="login-brandrow">
+          <div className="login-brandrow-icon"><LogoIcon size={34}/></div>
+          <div className="login-brandrow-name">AKTS Training Hub</div>
+        </div>
+
+        <div className="login-card">
+          <div className="login-card-title">Sign in to your account</div>
+          <div className="login-card-sub">Enter your employee credentials to continue.</div>
+
+          {err && <div className="error-box">⚠ {err}</div>}
+
+          <label className="form-label">Employee ID</label>
+          <input className="form-input" placeholder="e.g. EMP001" value={id} onChange={e=>setId(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handle()}/>
+
+          <label className="form-label">Password</label>
+          <input className="form-input" type="password" placeholder="Enter your password" value={pw} onChange={e=>setPw(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handle()}/>
+
+          <button className="btn-primary" onClick={handle} disabled={loading}>{loading?"Verifying…":"Sign In →"}</button>
+
+          <div className="login-contact">
+            This portal is exclusively for AKTS employees.<br/>
+            Contact AKTS HSE if you need access.
           </div>
         </div>
-      </div>
-    </>
-  );
-}
 
-function LockedScreen({ user, onLogout }) {
-  return (
-    <>
-      <style>{css}</style>
-      <TopBar user={user} onLogout={onLogout} onAdmin={()=>{}} />
-      <div className="main">
-        <div className="card" style={{maxWidth:"560px",margin:"60px auto",textAlign:"center"}}>
-          <div className="locked-icon">🔐</div>
-          <h2 style={{fontFamily:"Syne,sans-serif",fontWeight:800,fontSize:"22px",marginBottom:"8px"}}>Training Window Closed</h2>
-          <p style={{color:"var(--muted)",fontSize:"14px",lineHeight:1.7}}>
-            The May 2025 TBM Training session is not yet live.<br/>
-            You will receive a WhatsApp notification when it opens.
-          </p>
-          <div style={{background:"#f9fafb",borderRadius:"12px",padding:"20px",marginTop:"24px"}}>
-            <div style={{fontSize:"12px",color:"var(--muted)",textTransform:"uppercase",letterSpacing:"1px",marginBottom:"4px"}}>Next Session Opens</div>
-            <div style={{fontFamily:"Syne,sans-serif",fontWeight:800,fontSize:"18px"}}>Saturday, 24 May 2025 · 8:00 AM</div>
+        <div className="login-footer">
+          <div className="login-footer-desc">
+            Complete your mandatory training on your own schedule, within the open window. Fully digital, fully trackable.
           </div>
-        </div>
-      </div>
-    </>
-  );
-}
-
-function AlreadyDoneScreen({ user, completion, onLogout }) {
-  return (
-    <>
-      <style>{css}</style>
-      <TopBar user={user} onLogout={onLogout} onAdmin={()=>{}} />
-      <div className="main">
-        <div style={{maxWidth:"560px",margin:"40px auto"}}>
-          <div className="ack-box">
-            <div className="ack-icon">🎓</div>
-            <div className="ack-title">Training Complete</div>
-            <div className="ack-sub">You have already completed this month's TBM training. Your attendance has been recorded.</div>
-          </div>
-          <div className="cert-block">
-            <div style={{fontSize:"12px",color:"var(--muted)",textTransform:"uppercase",letterSpacing:"2px"}}>Certificate of Completion</div>
-            <div className="cert-name">{user.name}</div>
-            <div className="cert-detail">{CURRENT_MODULE.month} TBM Training</div>
-            <div className="cert-detail">Score: <strong>{completion.score}/10</strong> · Language: <strong>{completion.language === "english" ? "English" : "Mandarin 中文"}</strong></div>
-            <div className="cert-detail" style={{marginTop:"8px",fontSize:"12px",color:"#aaa"}}>Completed: {completion.completedAt}</div>
+          <div className="login-footer-grid">
+            <div className="login-footer-item"><div className="login-footer-dot">🌐</div>Available in 7 languages</div>
+            <div className="login-footer-item"><div className="login-footer-dot">▶</div>Interactive video checkpoints</div>
+            <div className="login-footer-item"><div className="login-footer-dot">📝</div>10-question knowledge quiz</div>
+            <div className="login-footer-item"><div className="login-footer-dot">✅</div>Digital attendance & sign-off</div>
           </div>
         </div>
       </div>
@@ -928,40 +373,45 @@ function AlreadyDoneScreen({ user, completion, onLogout }) {
 }
 
 function LanguageScreen({ user, onSelect }) {
-  const [selected, setSelected] = useState(null);
+  const [selected, setSelected] = useState("");
+  const lang = LANGUAGES.find(l => l.code === selected);
+
   return (
     <>
       <style>{css}</style>
-      <div style={{background:"var(--ink)",minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"24px",position:"relative",overflow:"hidden"}}>
-        <div style={{position:"absolute",inset:0,background:"radial-gradient(ellipse at 30% 50%, rgba(200,169,110,0.07) 0%,transparent 60%)",pointerEvents:"none"}}/>
-        <div className="card" style={{maxWidth:"520px",position:"relative",zIndex:1}}>
-          <div className="logo-block" style={{marginBottom:"24px"}}>
-            <div className="logo-title" style={{fontSize:"18px"}}>AKTS Training Hub</div>
-            <div style={{fontFamily:"Syne,sans-serif",fontSize:"22px",fontWeight:800,marginTop:"16px",color:"var(--ink)"}}>Select Your Language</div>
-            <div style={{fontSize:"13px",color:"var(--muted)",marginTop:"4px"}}>请选择您的培训语言 · Choose your training language</div>
+      <div className="lang-page">
+        <div className="lang-card">
+          <div className="lang-card-top">
+            <div className="lang-card-logo-icon"><LogoIcon size={30}/></div>
+            <div className="lang-card-name">AKTS Training Hub</div>
+          </div>
+          <div className="lang-title">Select Your Language</div>
+          <div className="lang-sub">Choose the language for your training session.<br/>请选择您的培训语言 · Pilih bahasa anda</div>
+
+          <div className="lang-select-wrap">
+            <select className="lang-select" value={selected} onChange={e=>setSelected(e.target.value)}>
+              <option value="" disabled>— Select a language —</option>
+              {LANGUAGES.map(l => (
+                <option key={l.code} value={l.code}>{l.flag}  {l.label} — {l.native}</option>
+              ))}
+            </select>
+            <div className="lang-arrow">⌄</div>
           </div>
 
-          <div className="lang-grid">
-            <div className={`lang-card ${selected==="english"?"selected":""}`} onClick={()=>setSelected("english")}>
-              <div className="lang-flag">🇬🇧</div>
-              <div className="lang-name">English</div>
-              <div className="lang-native">Training in English</div>
+          {lang && (
+            <div className="lang-preview">
+              <div className="lang-preview-flag">{lang.flag}</div>
+              <div>
+                <div className="lang-preview-name">{lang.label}</div>
+                <div className="lang-preview-native">{lang.native}</div>
+              </div>
             </div>
-            <div className={`lang-card ${selected==="mandarin"?"selected":""}`} onClick={()=>setSelected("mandarin")}>
-              <div className="lang-flag">🇨🇳</div>
-              <div className="lang-name">Mandarin</div>
-              <div className="lang-native">普通话培训</div>
-            </div>
-          </div>
+          )}
 
-          <button
-            className="btn btn-primary"
-            style={{marginTop:"24px"}}
-            disabled={!selected}
-            onClick={()=>selected&&onSelect(selected)}
-          >
-            Continue →
-          </button>
+          <button className="btn-primary" disabled={!selected} onClick={()=>selected&&onSelect(selected)}>Continue →</button>
+          <div style={{marginTop:"14px",textAlign:"center",fontSize:"12px",color:"var(--muted)"}}>
+            Hello, <strong>{user.name}</strong> — your preference will be saved.
+          </div>
         </div>
       </div>
     </>
@@ -972,35 +422,30 @@ function CheckpointModal({ checkpoint, onPass }) {
   const [sel, setSel] = useState(null);
   const [submitted, setSubmitted] = useState(false);
   const letters = ["A","B","C","D"];
-
   return (
     <div className="modal-backdrop">
       <div className="modal">
         <div className="modal-badge">⏸ Checkpoint Question</div>
         <div className="modal-q">{checkpoint.question}</div>
-        {checkpoint.options.map((opt, i) => {
+        {checkpoint.options.map((opt,i) => {
           let cls = "option-btn";
-          if (submitted) { cls += i === checkpoint.answer ? " correct" : sel === i ? " wrong" : ""; }
-          else if (sel === i) cls += " selected";
+          if (submitted) cls += i===checkpoint.answer?" correct":sel===i?" wrong":"";
+          else if (sel===i) cls += " selected";
           return (
             <button key={i} className={cls} onClick={()=>!submitted&&setSel(i)}>
-              <span className="option-letter">{letters[i]}</span>
-              {opt}
+              <span className="option-letter" style={{background:sel===i&&!submitted?"var(--blue)":"",color:sel===i&&!submitted?"#fff":""}}>{letters[i]}</span>{opt}
             </button>
           );
         })}
-        {!submitted ? (
-          <button className="btn btn-primary" style={{marginTop:"8px"}} disabled={sel===null} onClick={()=>setSubmitted(true)}>
-            Submit Answer
-          </button>
-        ) : (
-          <div>
-            <div style={{padding:"12px 16px",borderRadius:"10px",background: sel===checkpoint.answer?"#f0fdf4":"#fef2f2",color:sel===checkpoint.answer?"var(--green)":"var(--red)",fontSize:"14px",marginBottom:"12px",fontWeight:500}}>
-              {sel === checkpoint.answer ? "✓ Correct! Well done." : `✗ The correct answer is: ${checkpoint.options[checkpoint.answer]}`}
-            </div>
-            <button className="btn btn-primary" onClick={onPass}>Continue Video →</button>
-          </div>
-        )}
+        {!submitted
+          ? <button className="btn-primary" style={{marginTop:"8px"}} disabled={sel===null} onClick={()=>setSubmitted(true)}>Submit Answer</button>
+          : <>
+              <div style={{padding:"12px 16px",borderRadius:"10px",background:sel===checkpoint.answer?"#f0fdf4":"#fef2f2",color:sel===checkpoint.answer?"var(--green)":"var(--red)",fontSize:"13px",marginBottom:"12px",fontWeight:500}}>
+                {sel===checkpoint.answer?"✓ Correct! Great job.":`✗ Correct answer: ${checkpoint.options[checkpoint.answer]}`}
+              </div>
+              <button className="btn-primary" onClick={onPass}>Continue Video →</button>
+            </>
+        }
       </div>
     </div>
   );
@@ -1009,96 +454,70 @@ function CheckpointModal({ checkpoint, onPass }) {
 function VideoScreen({ user, language, onComplete }) {
   const [progress, setProgress] = useState(0);
   const [checkpoint, setCheckpoint] = useState(null);
-  const [passedCheckpoints, setPassedCheckpoints] = useState([]);
-  const [videoUnlocked, setVideoUnlocked] = useState(false);
-  const [simProgress, setSimProgress] = useState(0);
+  const [passed, setPassed] = useState([]);
+  const [started, setStarted] = useState(false);
+  const [sim, setSim] = useState(0);
+  const lang = LANGUAGES.find(l=>l.code===language);
 
-  // Simulate video progress for demo (in production, use YouTube IFrame API)
   useEffect(() => {
-    if (!videoUnlocked) return;
-    const nextCP = CURRENT_MODULE.checkpoints.find(cp => !passedCheckpoints.includes(cp.at) && simProgress >= cp.at);
-    if (nextCP) { setCheckpoint(nextCP); return; }
-    if (simProgress >= 100) { setProgress(100); return; }
-    const t = setTimeout(() => setSimProgress(p => Math.min(p + 0.5, 100)), 200);
-    return () => clearTimeout(t);
-  }, [simProgress, videoUnlocked, passedCheckpoints]);
+    if (!started) return;
+    const next = CURRENT_MODULE.checkpoints.find(cp=>!passed.includes(cp.at)&&sim>=cp.at);
+    if (next) { setCheckpoint(next); return; }
+    if (sim>=100) { setProgress(100); return; }
+    const t = setTimeout(()=>setSim(p=>Math.min(p+0.4,100)),200);
+    return ()=>clearTimeout(t);
+  }, [sim,started,passed]);
 
-  useEffect(() => { setProgress(simProgress); }, [simProgress]);
-
-  const handlePassCheckpoint = () => {
-    setPassedCheckpoints(p => [...p, checkpoint.at]);
-    setCheckpoint(null);
-  };
+  useEffect(()=>setProgress(sim),[sim]);
 
   return (
     <>
       <style>{css}</style>
-      <div style={{background:"#f4f2ee",minHeight:"100vh"}}>
-        <div className="topbar">
-          <div className="topbar-brand">AKTS Training Hub</div>
-          <div className="topbar-user">
-            <div className="avatar">{user.name.split(" ").map(w=>w[0]).join("").slice(0,2)}</div>
-            <span style={{color:"rgba(255,255,255,0.6)",fontSize:"13px"}}>{user.name}</span>
-          </div>
-        </div>
-
+      <div style={{minHeight:"100vh"}}>
+        <TopBar user={user} onLogout={()=>{}} onAdmin={()=>{}}/>
         <div className="main">
-          <div className="module-header">
-            <div className="module-tag">📹 Step 2 of 4 — Training Video</div>
+          <div className="module-card">
+            <div className="module-tag">STEP 2 OF 4 — TRAINING VIDEO</div>
             <div className="module-title">{CURRENT_MODULE.title}</div>
-            <div style={{fontSize:"13px",color:"var(--muted)"}}>
-              Language: {language === "english" ? "🇬🇧 English" : "🇨🇳 Mandarin 中文"} · {CURRENT_MODULE.checkpoints.length} checkpoint questions · Watch fully to unlock quiz
-            </div>
-            <StepIndicator current={2} />
+            <div className="module-sub">{lang?.flag} {lang?.label} · {CURRENT_MODULE.checkpoints.length} checkpoints · Watch fully to unlock quiz</div>
+            <StepIndicator current={2}/>
           </div>
-
-          <div style={{background:"#fff",borderRadius:"20px",padding:"32px",border:"1px solid #eee"}}>
+          <div style={{background:"#fff",borderRadius:"18px",padding:"26px",border:"1px solid var(--border)"}}>
             <div className="video-wrap">
-              <iframe
-                src={CURRENT_MODULE.videos[language]}
-                allow="autoplay; encrypted-media"
-                title="Training Video"
-              />
-              {!videoUnlocked && (
+              <iframe src={VIDEO_URL} allow="autoplay; encrypted-media" title="Training Video"/>
+              {!started && (
                 <div className="video-overlay">
-                  <div className="overlay-icon">▶</div>
-                  <div className="overlay-title">Ready to start?</div>
-                  <div className="overlay-sub">This video has {CURRENT_MODULE.checkpoints.length} checkpoint questions. You must answer them to continue. Do not close this page.</div>
-                  <button className="btn btn-gold" onClick={()=>setVideoUnlocked(true)}>Start Training Video</button>
+                  <button className="play-btn" onClick={()=>setStarted(true)}>▶</button>
+                  <div className="overlay-title">Ready to begin?</div>
+                  <div className="overlay-sub">{CURRENT_MODULE.checkpoints.length} checkpoint questions will appear during the video. Do not close this page.</div>
                 </div>
               )}
             </div>
-
-            <div className="progress-track">
-              <div className="progress-fill" style={{width:`${progress}%`}}/>
-            </div>
-            <div style={{display:"flex",justifyContent:"space-between",fontSize:"12px",color:"var(--muted)",marginBottom:"8px"}}>
+            <div className="progress-track" style={{marginBottom:"6px"}}><div className="progress-fill" style={{width:`${progress}%`}}/></div>
+            <div style={{display:"flex",justifyContent:"space-between",fontSize:"12px",color:"var(--muted)",marginBottom:"14px"}}>
               <span>Video Progress</span>
-              <span>{Math.round(progress)}% complete</span>
+              <span style={{fontWeight:600,color:progress>=100?"var(--green)":"var(--ink)"}}>{Math.round(progress)}%</span>
             </div>
-
-            <div style={{display:"flex",gap:"8px",flexWrap:"wrap",marginTop:"8px"}}>
-              {CURRENT_MODULE.checkpoints.map(cp => (
-                <div key={cp.at} style={{fontSize:"12px",padding:"4px 12px",borderRadius:"100px",background: passedCheckpoints.includes(cp.at) ? "#f0fdf4" : "#f9fafb",color: passedCheckpoints.includes(cp.at) ? "var(--green)" : "var(--muted)",border:`1px solid ${passedCheckpoints.includes(cp.at) ? "#bbf7d0" : "#e5e7eb"}`}}>
-                  {passedCheckpoints.includes(cp.at) ? "✓" : "○"} Checkpoint at {cp.at}%
+            <div style={{display:"flex",gap:"7px",flexWrap:"wrap"}}>
+              {CURRENT_MODULE.checkpoints.map(cp=>(
+                <div key={cp.at} style={{fontSize:"12px",padding:"5px 12px",borderRadius:"100px",fontWeight:500,background:passed.includes(cp.at)?"#f0fdf4":"var(--bg)",color:passed.includes(cp.at)?"var(--green)":"var(--muted)",border:`1px solid ${passed.includes(cp.at)?"#bbf7d0":"var(--border)"}`}}>
+                  {passed.includes(cp.at)?"✓":"○"} Checkpoint {cp.at}%
                 </div>
               ))}
             </div>
-
-            {progress >= 100 && (
-              <div style={{marginTop:"24px",padding:"20px",background:"#f0fdf4",borderRadius:"12px",border:"1px solid #bbf7d0",display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:"12px"}}>
+            {progress>=100 && (
+              <div style={{marginTop:"18px",padding:"16px 20px",background:"#f0fdf4",borderRadius:"12px",border:"1px solid #bbf7d0",display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:"12px"}}>
                 <div>
-                  <div style={{fontFamily:"Syne,sans-serif",fontWeight:700,color:"var(--green)"}}>✓ Video Complete!</div>
-                  <div style={{fontSize:"13px",color:"var(--muted)",marginTop:"2px"}}>All checkpoints passed. You're ready for the quiz.</div>
+                  <div style={{fontWeight:700,color:"var(--green)",fontSize:"14px"}}>✓ Video Complete!</div>
+                  <div style={{fontSize:"13px",color:"var(--muted)",marginTop:"2px"}}>All checkpoints passed. Proceed to the quiz.</div>
                 </div>
-                <button className="btn btn-primary" onClick={onComplete}>Take Quiz →</button>
+                <button className="btn-primary" style={{width:"auto",padding:"11px 22px"}} onClick={onComplete}>Take Quiz →</button>
               </div>
             )}
           </div>
         </div>
       </div>
-
-      {checkpoint && <CheckpointModal checkpoint={checkpoint} onPass={handlePassCheckpoint} />}
+      {checkpoint && <CheckpointModal checkpoint={checkpoint} onPass={()=>{setPassed(p=>[...p,checkpoint.at]);setCheckpoint(null);}}/>}
     </>
   );
 }
@@ -1112,64 +531,30 @@ function QuizScreen({ user, language, onComplete }) {
   const letters = ["A","B","C","D"];
   const q = CURRENT_MODULE.quiz[current];
 
-  const handleSelect = (i) => { if (!submitted) setAnswers({...answers, [current]: i}); };
-
   const handleNext = () => {
-    if (current < CURRENT_MODULE.quiz.length - 1) setCurrent(current + 1);
-    else {
-      let s = 0;
-      CURRENT_MODULE.quiz.forEach((q, i) => { if (answers[i] === q.answer) s++; });
-      setScore(s); setSubmitted(true);
-    }
-  };
-
-  const handleRetry = () => {
-    setAttempt(a=>a+1); setAnswers({}); setCurrent(0); setSubmitted(false); setScore(0);
+    if (current<CURRENT_MODULE.quiz.length-1) { setCurrent(c=>c+1); return; }
+    let s=0; CURRENT_MODULE.quiz.forEach((q,i)=>{ if(answers[i]===q.answer) s++; });
+    setScore(s); setSubmitted(true);
   };
 
   if (submitted) {
-    const passed = score >= 7;
+    const pass = score>=7;
     return (
       <>
         <style>{css}</style>
-        <div style={{background:"var(--surface)",minHeight:"100vh"}}>
-          <div className="topbar">
-            <div className="topbar-brand">AKTS Training Hub</div>
-          </div>
+        <div style={{minHeight:"100vh"}}>
+          <TopBar user={user} onLogout={()=>{}} onAdmin={()=>{}}/>
           <div className="main">
-            <div style={{maxWidth:"560px",margin:"0 auto"}}>
-              <div className="module-header">
-                <div className="module-tag">📊 Step 3 of 4 — Quiz Results</div>
-                <StepIndicator current={passed ? 4 : 3} />
-              </div>
-              <div style={{background:"#fff",borderRadius:"20px",padding:"36px",textAlign:"center",border:"1px solid #eee"}}>
-                <div className={`result-circle ${passed?"pass":"fail"}`}>
-                  {score}/10
-                  <div style={{fontSize:"12px",fontWeight:500,marginTop:"4px"}}>{passed?"PASS":"FAIL"}</div>
-                </div>
-                <h2 style={{fontFamily:"Syne,sans-serif",fontWeight:800,fontSize:"20px",marginBottom:"8px"}}>{passed ? "Well Done! 🎉" : "Not Quite There"}</h2>
-                <p style={{color:"var(--muted)",fontSize:"14px",lineHeight:1.7,marginBottom:"24px"}}>
-                  {passed
-                    ? `You scored ${score}/10 (${score*10}%). You may now complete your attendance acknowledgement.`
-                    : `You scored ${score}/10. A minimum of 7/10 is required. ${attempt < 3 ? `You have ${3-attempt} attempt(s) remaining.` : "You've used all 3 attempts. Your manager has been notified."}`}
-                </p>
-
-                {!passed && attempt < 3 && (
-                  <button className="btn btn-outline" style={{marginBottom:"12px",width:"100%"}} onClick={handleRetry}>
-                    🔄 Rewatch & Retry (Attempt {attempt+1}/3)
-                  </button>
-                )}
-                {passed && (
-                  <button className="btn btn-primary" onClick={() => onComplete(score)}>
-                    Complete & Sign Acknowledgement →
-                  </button>
-                )}
-                {!passed && attempt >= 3 && (
-                  <div style={{padding:"16px",background:"#fef2f2",borderRadius:"12px",color:"var(--red)",fontSize:"13px"}}>
-                    ⚠ Maximum attempts reached. Your supervisor has been flagged. Please speak to your manager.
-                  </div>
-                )}
-              </div>
+            <div className="module-card"><div className="module-tag">STEP 3 OF 4 — RESULTS</div><StepIndicator current={pass?4:3}/></div>
+            <div style={{background:"#fff",borderRadius:"18px",padding:"36px",textAlign:"center",border:"1px solid var(--border)"}}>
+              <div className={`result-circle ${pass?"pass":"fail"}`}>{score}/10<div style={{fontSize:"10px",fontWeight:700,marginTop:"3px"}}>{pass?"PASS":"FAIL"}</div></div>
+              <h2 style={{fontSize:"20px",fontWeight:700,marginBottom:"8px",letterSpacing:"-0.3px"}}>{pass?"Well Done! 🎉":"Not Quite There"}</h2>
+              <p style={{color:"var(--muted)",fontSize:"14px",lineHeight:1.7,marginBottom:"24px",maxWidth:"360px",margin:"0 auto 24px"}}>
+                {pass?`You scored ${score}/10 (${score*10}%). Proceed to sign your attendance.`:`You scored ${score}/10. Minimum 7/10 required. ${attempt<3?`${3-attempt} attempt(s) remaining.`:"All 3 attempts used. Your manager has been notified."}`}
+              </p>
+              {!pass&&attempt<3&&<button className="btn-outline" style={{marginBottom:"12px"}} onClick={()=>{setAttempt(a=>a+1);setAnswers({});setCurrent(0);setSubmitted(false);setScore(0);}}>🔄 Retry (Attempt {attempt+1}/3)</button>}
+              {pass&&<button className="btn-primary" style={{maxWidth:"280px",margin:"0 auto"}} onClick={()=>onComplete(score)}>Complete & Sign Attendance →</button>}
+              {!pass&&attempt>=3&&<div style={{padding:"14px",background:"#fef2f2",borderRadius:"12px",color:"var(--red)",fontSize:"13px"}}>⚠ Maximum attempts reached. Please speak to your supervisor.</div>}
             </div>
           </div>
         </div>
@@ -1180,40 +565,27 @@ function QuizScreen({ user, language, onComplete }) {
   return (
     <>
       <style>{css}</style>
-      <div style={{background:"var(--surface)",minHeight:"100vh"}}>
-        <div className="topbar">
-          <div className="topbar-brand">AKTS Training Hub</div>
-          <div className="topbar-user">
-            <span style={{color:"rgba(255,255,255,0.5)",fontSize:"12px"}}>Attempt {attempt}/3</span>
-          </div>
-        </div>
+      <div style={{minHeight:"100vh"}}>
+        <TopBar user={user} onLogout={()=>{}} onAdmin={()=>{}}/>
         <div className="main">
-          <div style={{maxWidth:"600px",margin:"0 auto"}}>
-            <div className="module-header">
-              <div className="module-tag">📝 Step 3 of 4 — Knowledge Check</div>
-              <StepIndicator current={3} />
+          <div className="module-card"><div className="module-tag">STEP 3 OF 4 — KNOWLEDGE CHECK</div><StepIndicator current={3}/></div>
+          <div style={{background:"#fff",borderRadius:"18px",padding:"30px",border:"1px solid var(--border)"}}>
+            <div className="quiz-header">
+              <div className="q-counter">Question {current+1} of {CURRENT_MODULE.quiz.length}</div>
+              <div className="q-badge">Attempt {attempt}/3</div>
             </div>
-            <div style={{background:"#fff",borderRadius:"20px",padding:"36px",border:"1px solid #eee"}}>
-              <div className="quiz-header">
-                <div className="q-counter">Question {current+1} of {CURRENT_MODULE.quiz.length}</div>
-                <div className="q-score-badge">{Object.keys(answers).length} Answered</div>
-              </div>
-              <div className="progress-track" style={{marginBottom:"24px"}}>
-                <div className="progress-fill" style={{width:`${((current)/CURRENT_MODULE.quiz.length)*100}%`}}/>
-              </div>
-              <div className="modal-q" style={{fontSize:"17px",marginBottom:"20px"}}>{q.q}</div>
-              {q.options.map((opt, i) => (
-                <button key={i} className={`option-btn ${answers[current]===i?"selected":""}`} onClick={()=>handleSelect(i)}>
-                  <span className="option-letter" style={{background: answers[current]===i?"var(--gold)":"#f3f4f6",color: answers[current]===i?"var(--ink)":"inherit"}}>{letters[i]}</span>
-                  {opt}
-                </button>
-              ))}
-              <div style={{display:"flex",gap:"12px",marginTop:"8px"}}>
-                {current > 0 && <button className="btn btn-outline" style={{flex:1}} onClick={()=>setCurrent(c=>c-1)}>← Back</button>}
-                <button className="btn btn-primary" style={{flex:2}} disabled={answers[current]===undefined} onClick={handleNext}>
-                  {current < CURRENT_MODULE.quiz.length-1 ? "Next →" : "Submit Quiz →"}
-                </button>
-              </div>
+            <div className="progress-track" style={{marginBottom:"22px"}}><div className="progress-fill" style={{width:`${(current/CURRENT_MODULE.quiz.length)*100}%`}}/></div>
+            <div className="modal-q" style={{fontSize:"16px"}}>{q.q}</div>
+            {q.options.map((opt,i)=>(
+              <button key={i} className={`option-btn ${answers[current]===i?"selected":""}`} onClick={()=>setAnswers({...answers,[current]:i})}>
+                <span className="option-letter" style={{background:answers[current]===i?"var(--blue)":"",color:answers[current]===i?"#fff":""}}>{letters[i]}</span>{opt}
+              </button>
+            ))}
+            <div style={{display:"flex",gap:"10px",marginTop:"8px"}}>
+              {current>0&&<button className="btn-outline" style={{flex:1}} onClick={()=>setCurrent(c=>c-1)}>← Back</button>}
+              <button className="btn-primary" style={{flex:2}} disabled={answers[current]===undefined} onClick={handleNext}>
+                {current<CURRENT_MODULE.quiz.length-1?"Next →":"Submit Quiz →"}
+              </button>
             </div>
           </div>
         </div>
@@ -1225,49 +597,86 @@ function QuizScreen({ user, language, onComplete }) {
 function AcknowledgementScreen({ user, score, language, onDone }) {
   const [checked, setChecked] = useState(false);
   const [signed, setSigned] = useState(false);
-  const now = new Date().toLocaleString("en-SG", {dateStyle:"full",timeStyle:"short"});
+  const lang = LANGUAGES.find(l=>l.code===language);
+  const now = new Date().toLocaleString("en-SG",{dateStyle:"full",timeStyle:"short"});
 
   const handleSign = () => {
     setSigned(true);
-    saveCompletion(user.id, { score, language, completedAt: now, name: user.name });
-    setTimeout(onDone, 300);
+    saveCompletion(user.id,{score,language,completedAt:now,name:user.name});
+    setTimeout(onDone,400);
   };
 
   return (
     <>
       <style>{css}</style>
-      <div style={{background:"var(--surface)",minHeight:"100vh"}}>
-        <div className="topbar"><div className="topbar-brand">AKTS Training Hub</div></div>
+      <div style={{minHeight:"100vh"}}>
+        <TopBar user={user} onLogout={()=>{}} onAdmin={()=>{}}/>
         <div className="main">
-          <div style={{maxWidth:"560px",margin:"0 auto"}}>
-            <div className="module-header">
-              <div className="module-tag">✅ Step 4 of 4 — Acknowledgement</div>
-              <StepIndicator current={4} />
+          <div className="module-card"><div className="module-tag">STEP 4 OF 4 — ACKNOWLEDGEMENT</div><StepIndicator current={4}/></div>
+          <div style={{background:"#fff",borderRadius:"18px",padding:"30px",border:"1px solid var(--border)"}}>
+            <div className="cert-block">
+              <div className="cert-label">Training Completion Record</div>
+              <div className="cert-name">{user.name}</div>
+              <div className="cert-detail">Employee ID: {user.id.toUpperCase()} · {user.department}</div>
+              <div className="cert-detail">{CURRENT_MODULE.title}</div>
+              <div className="cert-detail">Score: <strong>{score}/10</strong> ({score*10}%) · {lang?.flag} {lang?.label}</div>
+              <div style={{fontSize:"12px",color:"#9ca3af",marginTop:"8px"}}>{now}</div>
             </div>
-            <div style={{background:"#fff",borderRadius:"20px",padding:"36px",border:"1px solid #eee"}}>
-              <div className="cert-block">
-                <div style={{fontSize:"11px",color:"var(--muted)",textTransform:"uppercase",letterSpacing:"2px",marginBottom:"8px"}}>Training Record</div>
-                <div className="cert-name">{user.name}</div>
-                <div className="cert-detail">Employee ID: {user.id.toUpperCase()} · {user.department}</div>
-                <div className="cert-detail">Module: {CURRENT_MODULE.title}</div>
-                <div className="cert-detail">Quiz Score: <strong>{score}/10</strong> ({score*10}%) · Language: {language === "english" ? "English" : "Mandarin 中文"}</div>
-                <div className="cert-detail" style={{marginTop:"8px",fontSize:"12px",color:"#aaa"}}>Date: {now}</div>
-              </div>
-
-              <div style={{background:"#fffbf5",border:"1px solid var(--border)",borderRadius:"12px",padding:"20px",marginBottom:"20px",fontSize:"14px",lineHeight:1.7,color:"var(--ink)"}}>
-                <strong>Declaration:</strong><br/>
-                I, <strong>{user.name}</strong>, confirm that I have fully watched the <strong>{CURRENT_MODULE.title}</strong> training video and completed the knowledge assessment. I understand the content covered and commit to applying these practices in my daily work.
-              </div>
-
-              <label style={{display:"flex",alignItems:"flex-start",gap:"12px",cursor:"pointer",marginBottom:"24px",textTransform:"none",letterSpacing:"normal",fontSize:"14px",color:"var(--ink)",fontWeight:"normal"}}>
-                <input type="checkbox" checked={checked} onChange={e=>setChecked(e.target.checked)} style={{width:"18px",height:"18px",flexShrink:0,marginTop:"2px",accentColor:"var(--gold)"}}/>
-                I agree to the above declaration and confirm my attendance for this TBM training session.
-              </label>
-
-              <button className="btn btn-primary" disabled={!checked || signed} onClick={handleSign}>
-                {signed ? "✓ Recorded!" : "Sign & Submit Attendance →"}
-              </button>
+            <div style={{background:"var(--blue-light)",border:"1px solid var(--blue-border)",borderRadius:"12px",padding:"18px 20px",marginBottom:"20px",fontSize:"14px",lineHeight:1.8,color:"var(--ink)"}}>
+              <strong>Declaration:</strong><br/>
+              I, <strong>{user.name}</strong>, confirm that I have fully watched the <strong>{CURRENT_MODULE.title}</strong> and completed the knowledge assessment. I understand the content and commit to applying these practices in my daily work.
             </div>
+            <label style={{display:"flex",alignItems:"flex-start",gap:"12px",cursor:"pointer",marginBottom:"22px",fontSize:"14px",color:"var(--ink)",fontWeight:500}}>
+              <input type="checkbox" checked={checked} onChange={e=>setChecked(e.target.checked)} style={{width:"17px",height:"17px",flexShrink:0,marginTop:"2px",accentColor:"var(--blue)"}}/>
+              I agree to the above declaration and confirm my attendance for this training session.
+            </label>
+            <button className="btn-primary" disabled={!checked||signed} onClick={handleSign}>
+              {signed?"✓ Recorded!":"Sign & Submit Attendance →"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+function AlreadyDoneScreen({ user, completion, onLogout }) {
+  const lang = LANGUAGES.find(l=>l.code===completion?.language);
+  return (
+    <>
+      <style>{css}</style>
+      <TopBar user={user} onLogout={onLogout} onAdmin={()=>{}}/>
+      <div className="main" style={{maxWidth:"540px"}}>
+        <div className="ack-hero">
+          <div className="ack-icon">🎓</div>
+          <div className="ack-title">Training Complete</div>
+          <div className="ack-sub">You have already completed this month's training. Your attendance has been recorded.</div>
+        </div>
+        <div className="cert-block">
+          <div className="cert-label">Certificate of Completion</div>
+          <div className="cert-name">{user.name}</div>
+          <div className="cert-detail">{CURRENT_MODULE.month} Internal Training</div>
+          <div className="cert-detail">Score: <strong>{completion?.score}/10</strong> · {lang?.flag} {lang?.label}</div>
+          <div style={{fontSize:"12px",color:"#9ca3af",marginTop:"8px"}}>{completion?.completedAt}</div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+function LockedScreen({ user, onLogout }) {
+  return (
+    <>
+      <style>{css}</style>
+      <TopBar user={user} onLogout={onLogout} onAdmin={()=>{}}/>
+      <div className="main" style={{maxWidth:"500px",paddingTop:"56px",textAlign:"center"}}>
+        <div style={{background:"#fff",borderRadius:"18px",padding:"48px 32px",border:"1px solid var(--border)"}}>
+          <div className="locked-icon">🔐</div>
+          <h2 style={{fontSize:"21px",fontWeight:700,marginBottom:"8px",letterSpacing:"-0.3px"}}>Training Window Closed</h2>
+          <p style={{color:"var(--muted)",fontSize:"14px",lineHeight:1.7}}>The next session is not yet live.<br/>You will be notified when it opens.</p>
+          <div style={{background:"var(--bg)",borderRadius:"12px",padding:"18px",marginTop:"22px"}}>
+            <div style={{fontSize:"10px",color:"var(--muted)",textTransform:"uppercase",letterSpacing:"1px",marginBottom:"4px"}}>Next Session Opens</div>
+            <div style={{fontWeight:700,fontSize:"16px"}}>Check back next month</div>
           </div>
         </div>
       </div>
@@ -1278,102 +687,67 @@ function AcknowledgementScreen({ user, score, language, onDone }) {
 function AdminPanel({ onBack }) {
   const completions = getCompletions();
   const allUsers = Object.entries(MOCK_USERS).filter(([,u])=>u.role==="employee");
-  const completed = allUsers.filter(([id]) => completions[id]?.[CURRENT_MODULE.id]);
-  const pending = allUsers.filter(([id]) => !completions[id]?.[CURRENT_MODULE.id]);
-  const avgScore = completed.length
-    ? Math.round(completed.reduce((sum,[id])=>sum+(completions[id][CURRENT_MODULE.id].score||0),0)/completed.length*10)
-    : 0;
+  const completed = allUsers.filter(([id])=>completions[id]?.[CURRENT_MODULE.id]);
+  const pending = allUsers.filter(([id])=>!completions[id]?.[CURRENT_MODULE.id]);
+  const avgScore = completed.length?Math.round(completed.reduce((s,[id])=>s+(completions[id][CURRENT_MODULE.id].score||0),0)/completed.length*10):0;
 
   return (
     <>
       <style>{css}</style>
-      <div style={{background:"var(--surface)",minHeight:"100vh"}}>
+      <div style={{minHeight:"100vh"}}>
         <div className="topbar">
-          <div className="topbar-brand">AKTS Training Hub · Admin</div>
-          <button className="btn btn-outline" style={{color:"#fff",borderColor:"rgba(255,255,255,0.2)",padding:"8px 16px",fontSize:"13px"}} onClick={onBack}>← Back</button>
+          <div className="topbar-left">
+            <div className="topbar-logo"><LogoIcon size={26}/></div>
+            <div className="topbar-name">AKTS Training Hub <span style={{color:"var(--blue)",fontSize:"10px",fontWeight:700,letterSpacing:"1px",textTransform:"uppercase",marginLeft:"8px"}}>Admin</span></div>
+          </div>
+          <button className="sign-out-btn" onClick={onBack}>← Exit Admin</button>
         </div>
-        <div className="main" style={{maxWidth:"900px"}}>
-          <div style={{marginBottom:"32px"}}>
-            <div className="section-title">Admin Dashboard</div>
-            <div className="section-sub">{CURRENT_MODULE.title} · Window: Open until {CURRENT_MODULE.deadline}</div>
+        <div className="main-wide">
+          <div style={{marginBottom:"24px"}}>
+            <div style={{fontSize:"24px",fontWeight:800,letterSpacing:"-0.3px",marginBottom:"3px"}}>Dashboard</div>
+            <div style={{fontSize:"13px",color:"var(--muted)"}}>{CURRENT_MODULE.title} · Closes {CURRENT_MODULE.deadline}</div>
           </div>
-
-          <div className="admin-grid">
-            <div className="stat-card">
-              <div className="stat-num">{allUsers.length}</div>
-              <div className="stat-label">Total Employees</div>
-            </div>
-            <div className="stat-card">
-              <div className="stat-num green">{completed.length}</div>
-              <div className="stat-label">Completed</div>
-            </div>
-            <div className="stat-card">
-              <div className="stat-num red">{pending.length}</div>
-              <div className="stat-label">Pending</div>
-            </div>
-            <div className="stat-card">
-              <div className="stat-num gold">{avgScore}%</div>
-              <div className="stat-label">Avg. Quiz Score</div>
-            </div>
+          <div className="admin-stats">
+            <div className="stat-card"><div className="stat-num">{allUsers.length}</div><div className="stat-label">Total Employees</div></div>
+            <div className="stat-card"><div className="stat-num green">{completed.length}</div><div className="stat-label">Completed</div></div>
+            <div className="stat-card"><div className="stat-num red">{pending.length}</div><div className="stat-label">Pending</div></div>
+            <div className="stat-card"><div className="stat-num blue">{avgScore}%</div><div className="stat-label">Avg. Score</div></div>
           </div>
-
-          <div style={{background:"#fff",borderRadius:"20px",overflow:"hidden",border:"1px solid #eee",marginBottom:"24px"}}>
-            <div style={{padding:"20px 24px",borderBottom:"1px solid #f3f4f6",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <div style={{fontFamily:"Syne,sans-serif",fontWeight:700,fontSize:"16px"}}>Completion Report</div>
-              <div style={{fontSize:"12px",color:"var(--muted)"}}>Export → CSV</div>
+          <div style={{background:"#fff",borderRadius:"18px",overflow:"hidden",border:"1px solid var(--border)",marginBottom:"18px"}}>
+            <div style={{padding:"16px 22px",borderBottom:"1px solid var(--border)",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+              <div style={{fontWeight:700,fontSize:"15px"}}>Completion Report</div>
+              <div style={{fontSize:"12px",color:"var(--blue)",cursor:"pointer",fontWeight:600}}>Export CSV →</div>
             </div>
             <table>
-              <thead>
-                <tr>
-                  <th>Employee</th>
-                  <th>Department</th>
-                  <th>Status</th>
-                  <th>Score</th>
-                  <th>Language</th>
-                  <th>Completed At</th>
-                </tr>
-              </thead>
+              <thead><tr><th>Employee</th><th>Department</th><th>Status</th><th>Score</th><th>Language</th><th>Completed At</th></tr></thead>
               <tbody>
-                {allUsers.map(([id, u]) => {
-                  const c = completions[id]?.[CURRENT_MODULE.id];
+                {allUsers.map(([id,u])=>{
+                  const c=completions[id]?.[CURRENT_MODULE.id];
+                  const lang=LANGUAGES.find(l=>l.code===c?.language);
                   return (
                     <tr key={id}>
                       <td><strong>{u.name}</strong><br/><span style={{fontSize:"11px",color:"var(--muted)"}}>{id}</span></td>
                       <td>{u.department}</td>
-                      <td>{c ? <span className="badge badge-green">✓ Done</span> : <span className="badge badge-red">Pending</span>}</td>
-                      <td>{c ? `${c.score}/10` : "—"}</td>
-                      <td>{c ? (c.language === "english" ? "🇬🇧 EN" : "🇨🇳 ZH") : "—"}</td>
-                      <td style={{fontSize:"12px"}}>{c?.completedAt || "—"}</td>
+                      <td>{c?<span className="badge badge-green">✓ Done</span>:<span className="badge badge-red">Pending</span>}</td>
+                      <td>{c?`${c.score}/10`:"—"}</td>
+                      <td>{c?`${lang?.flag} ${lang?.label}`:"—"}</td>
+                      <td style={{fontSize:"12px",color:"var(--muted)"}}>{c?.completedAt||"—"}</td>
                     </tr>
                   );
                 })}
               </tbody>
             </table>
           </div>
-
-          <div style={{background:"#fff",borderRadius:"20px",padding:"28px",border:"1px solid #eee"}}>
-            <div style={{fontFamily:"Syne,sans-serif",fontWeight:700,fontSize:"16px",marginBottom:"16px"}}>📤 Upload Next Month's Video</div>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"16px",marginBottom:"16px"}}>
-              <div className="form-group" style={{margin:0}}>
-                <label>English Video URL (YouTube/Vimeo)</label>
-                <input placeholder="https://youtube.com/embed/..." />
-              </div>
-              <div className="form-group" style={{margin:0}}>
-                <label>Mandarin Video URL (YouTube/Vimeo)</label>
-                <input placeholder="https://youtube.com/embed/..." />
-              </div>
+          <div style={{background:"#fff",borderRadius:"18px",padding:"26px",border:"1px solid var(--border)"}}>
+            <div style={{fontWeight:700,fontSize:"15px",marginBottom:"6px"}}>📤 Upload Next Month's Training Video</div>
+            <div style={{fontSize:"12px",color:"var(--muted)",marginBottom:"18px"}}>Upload your video to YouTube as <strong>Unlisted</strong>, then paste the embed link below. Captions/multi-language video coming in a later phase — for now everyone watches the same English video.</div>
+            <label className="form-label-light">Training Video URL (YouTube embed link)</label>
+            <input className="form-input-light" placeholder="https://www.youtube.com/embed/VIDEO_ID"/>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"14px",marginBottom:"18px"}}>
+              <div><label className="form-label-light">Window Opens</label><input type="datetime-local" className="form-input-light"/></div>
+              <div><label className="form-label-light">Window Closes</label><input type="datetime-local" className="form-input-light"/></div>
             </div>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"16px",marginBottom:"16px"}}>
-              <div className="form-group" style={{margin:0}}>
-                <label>Window Open (Date + Time)</label>
-                <input type="datetime-local"/>
-              </div>
-              <div className="form-group" style={{margin:0}}>
-                <label>Window Close (Date + Time)</label>
-                <input type="datetime-local"/>
-              </div>
-            </div>
-            <button className="btn btn-primary" style={{maxWidth:"240px"}}>Save & Schedule →</button>
+            <button className="btn-primary" style={{maxWidth:"200px"}}>Save & Schedule →</button>
           </div>
         </div>
       </div>
@@ -1381,17 +755,16 @@ function AdminPanel({ onBack }) {
   );
 }
 
-// ─── APP CONTROLLER ──────────────────────────────────────────────────────────
-
+// ─── APP ─────────────────────────────────────────────────────────────────────
 export default function App() {
   const [user, setUser] = useState(null);
-  const [screen, setScreen] = useState("login"); // login | home | language | video | quiz | ack | done | admin
+  const [screen, setScreen] = useState("login");
   const [language, setLanguage] = useState(null);
   const [quizScore, setQuizScore] = useState(0);
 
   const handleLogin = (u) => {
     setUser(u);
-    if (u.role === "admin") { setScreen("admin"); return; }
+    if (u.role==="admin") { setScreen("admin"); return; }
     const done = getUserCompletion(u.id);
     if (done) { setScreen("done"); return; }
     if (!CURRENT_MODULE.windowOpen) { setScreen("locked"); return; }
@@ -1400,17 +773,13 @@ export default function App() {
 
   const handleLogout = () => { setUser(null); setScreen("login"); setLanguage(null); };
 
-  if (screen === "login") return <LoginScreen onLogin={handleLogin}/>;
-  if (screen === "locked") return <LockedScreen user={user} onLogout={handleLogout}/>;
-  if (screen === "admin") return <AdminPanel onBack={handleLogout}/>;
-  if (screen === "done") {
-    const c = getUserCompletion(user.id);
-    return <AlreadyDoneScreen user={user} completion={c} onLogout={handleLogout}/>;
-  }
-  if (screen === "language") return <LanguageScreen user={user} onSelect={(l)=>{setLanguage(l);setScreen("video");}}/>;
-  if (screen === "video") return <VideoScreen user={user} language={language} onComplete={()=>setScreen("quiz")}/>;
-  if (screen === "quiz") return <QuizScreen user={user} language={language} onComplete={(s)=>{setQuizScore(s);setScreen("ack");}}/>;
-  if (screen === "ack") return <AcknowledgementScreen user={user} score={quizScore} language={language} onDone={()=>setScreen("done")}/>;
-
+  if (screen==="login") return <LoginScreen onLogin={handleLogin}/>;
+  if (screen==="locked") return <LockedScreen user={user} onLogout={handleLogout}/>;
+  if (screen==="admin") return <AdminPanel onBack={handleLogout}/>;
+  if (screen==="done") return <AlreadyDoneScreen user={user} completion={getUserCompletion(user.id)} onLogout={handleLogout}/>;
+  if (screen==="language") return <LanguageScreen user={user} onSelect={l=>{setLanguage(l);setScreen("video");}}/>;
+  if (screen==="video") return <VideoScreen user={user} language={language} onComplete={()=>setScreen("quiz")}/>;
+  if (screen==="quiz") return <QuizScreen user={user} language={language} onComplete={s=>{setQuizScore(s);setScreen("ack");}}/>;
+  if (screen==="ack") return <AcknowledgementScreen user={user} score={quizScore} language={language} onDone={()=>setScreen("done")}/>;
   return null;
 }
