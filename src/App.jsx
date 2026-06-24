@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { createClient } from "@supabase/supabase-js";
 
 // ─── SUPABASE CONNECTION ──────────────────────────────────────────────────────
@@ -80,6 +80,29 @@ function formatDeadline(windowClose) {
   if (!windowClose) return "the end of this session";
   return new Date(windowClose).toLocaleDateString("en-US", { weekday: "long", day: "numeric", month: "long", year: "numeric" })
     + " at " + new Date(windowClose).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+}
+
+function loadYouTubeAPI() {
+  return new Promise((resolve) => {
+    if (window.YT && window.YT.Player) { resolve(window.YT); return; }
+    if (!document.getElementById("youtube-iframe-api")) {
+      const tag = document.createElement("script");
+      tag.id = "youtube-iframe-api";
+      tag.src = "https://www.youtube.com/iframe_api";
+      document.body.appendChild(tag);
+    }
+    const prevCallback = window.onYouTubeIframeAPIReady;
+    window.onYouTubeIframeAPIReady = () => {
+      if (prevCallback) prevCallback();
+      resolve(window.YT);
+    };
+  });
+}
+
+function extractVideoId(embedUrl) {
+  if (!embedUrl) return "";
+  const match = embedUrl.match(/embed\/([a-zA-Z0-9_-]+)/);
+  return match ? match[1] : "";
 }
 
 // ─── STYLES — clean white / blue corporate theme ─────────────────────────────
@@ -482,19 +505,64 @@ function VideoScreen({ user, language, moduleData, onComplete }) {
   const [checkpoint, setCheckpoint] = useState(null);
   const [passed, setPassed] = useState([]);
   const [started, setStarted] = useState(false);
-  const [sim, setSim] = useState(0);
+  const [playerReady, setPlayerReady] = useState(false);
+  const playerRef = useRef(null);
+  const intervalRef = useRef(null);
   const lang = LANGUAGES.find(l=>l.code===language);
+  const videoId = extractVideoId(moduleData.videoUrl);
 
+  // Load the real YouTube player once
+  useEffect(() => {
+    let mounted = true;
+    loadYouTubeAPI().then(YT => {
+      if (!mounted) return;
+      playerRef.current = new YT.Player("yt-player-" + videoId, {
+        videoId,
+        playerVars: { rel: 0, modestbranding: 1, playsinline: 1 },
+        events: {
+          onReady: () => setPlayerReady(true),
+          onStateChange: (e) => { if (e.data === YT.PlayerState.ENDED) setProgress(100); },
+        },
+      });
+    });
+    return () => {
+      mounted = false;
+      if (intervalRef.current) clearInterval(intervalRef.current);
+      if (playerRef.current && playerRef.current.destroy) playerRef.current.destroy();
+    };
+  }, [videoId]);
+
+  // Poll the REAL video position every half second
   useEffect(() => {
     if (!started) return;
-    const next = moduleData.checkpoints.find(cp=>!passed.includes(cp.at)&&sim>=cp.at);
-    if (next) { setCheckpoint(next); return; }
-    if (sim>=100) { setProgress(100); return; }
-    const t = setTimeout(()=>setSim(p=>Math.min(p+0.4,100)),200);
-    return ()=>clearTimeout(t);
-  }, [sim,started,passed,moduleData]);
+    intervalRef.current = setInterval(() => {
+      const player = playerRef.current;
+      if (!player || typeof player.getDuration !== "function") return;
+      const duration = player.getDuration();
+      const current = player.getCurrentTime();
+      if (!duration) return;
+      const pct = Math.min((current / duration) * 100, 100);
+      setProgress(pct);
 
-  useEffect(()=>setProgress(sim),[sim]);
+      const next = moduleData.checkpoints.find(cp => !passed.includes(cp.at) && pct >= cp.at);
+      if (next && !checkpoint) {
+        player.pauseVideo();
+        setCheckpoint(next);
+      }
+    }, 500);
+    return () => clearInterval(intervalRef.current);
+  }, [started, passed, checkpoint, moduleData]);
+
+  const handleStart = () => {
+    setStarted(true);
+    if (playerRef.current && playerRef.current.playVideo) playerRef.current.playVideo();
+  };
+
+  const handleCheckpointPass = (cp) => {
+    setPassed(p => [...p, cp.at]);
+    setCheckpoint(null);
+    if (playerRef.current && playerRef.current.playVideo) playerRef.current.playVideo();
+  };
 
   return (
     <>
@@ -510,12 +578,12 @@ function VideoScreen({ user, language, moduleData, onComplete }) {
           </div>
           <div style={{background:"#fff",borderRadius:"18px",padding:"26px",border:"1px solid var(--border)"}}>
             <div className="video-wrap">
-              <iframe src={moduleData.videoUrl} allow="autoplay; encrypted-media" title="Training Video"/>
+              <div id={"yt-player-" + videoId} style={{width:"100%",height:"100%"}}/>
               {!started && (
                 <div className="video-overlay">
-                  <button className="play-btn" onClick={()=>setStarted(true)}>▶</button>
-                  <div className="overlay-title">Ready to begin?</div>
-                  <div className="overlay-sub">{moduleData.checkpoints.length} checkpoint questions will appear during the video. Do not close this page.</div>
+                  <button className="play-btn" onClick={handleStart} disabled={!playerReady}>▶</button>
+                  <div className="overlay-title">{playerReady ? "Ready to begin?" : "Loading video…"}</div>
+                  <div className="overlay-sub">{moduleData.checkpoints.length} checkpoint questions will appear during the video — it will pause automatically. Do not close this page.</div>
                 </div>
               )}
             </div>
@@ -543,7 +611,7 @@ function VideoScreen({ user, language, moduleData, onComplete }) {
           </div>
         </div>
       </div>
-      {checkpoint && <CheckpointModal checkpoint={checkpoint} onPass={()=>{setPassed(p=>[...p,checkpoint.at]);setCheckpoint(null);}}/>}
+      {checkpoint && <CheckpointModal checkpoint={checkpoint} onPass={()=>handleCheckpointPass(checkpoint)}/>}
     </>
   );
 }
