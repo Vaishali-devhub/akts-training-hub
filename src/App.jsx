@@ -1,13 +1,13 @@
 import { useState, useEffect } from "react";
+import { createClient } from "@supabase/supabase-js";
 
-// ─── MOCK DATA ───────────────────────────────────────────────────────────────
-const MOCK_USERS = {
-  "emp001": { password: "akts2024", name: "Ahmad Razif", department: "Operations", role: "employee" },
-  "emp002": { password: "akts2024", name: "Lin Wei", department: "Safety", role: "employee" },
-  "emp003": { password: "akts2024", name: "Priya Nair", department: "HR", role: "employee" },
-  "admin":  { password: "admin888", name: "Admin Manager", department: "Management", role: "admin" },
-};
+// ─── SUPABASE CONNECTION ──────────────────────────────────────────────────────
+const supabase = createClient(
+  "https://keapdqlxnslbdtfnfraa.supabase.co",
+  "sb_publishable_Eajulo5M-gdKfFC-vWUXcA_CEvxFvGd"
+);
 
+// ─── LANGUAGES ────────────────────────────────────────────────────────────────
 const LANGUAGES = [
   { code: "english",   label: "English",    native: "English",       flag: "🇬🇧" },
   { code: "mandarin",  label: "Mandarin",   native: "普通话",         flag: "🇨🇳" },
@@ -18,54 +18,69 @@ const LANGUAGES = [
   { code: "bangla",    label: "Bangla",     native: "বাংলা",           flag: "🇧🇩" },
 ];
 
-// Video is always English for now (captions/translation coming in a later phase)
-const VIDEO_URL = "https://www.youtube.com/embed/dQw4w9WgXcQ?enablejsapi=1";
+// ─── DATA HELPERS ─────────────────────────────────────────────────────────────
+async function fetchActiveModule() {
+  const { data: modules } = await supabase
+    .from("training_modules")
+    .select("*")
+    .eq("window_open", true)
+    .order("created_at", { ascending: false })
+    .limit(1);
 
-// ─── AUTO-COMPUTED MONTH/DATE — no manual editing needed each month ──────────
-function getModuleMeta() {
-  const now = new Date();
-  const monthLabel = now.toLocaleDateString("en-US", { month: "long", year: "numeric" });
-  const id = `INT-${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-  const title = `${monthLabel} Internal Training`;
+  if (!modules || modules.length === 0) return null;
+  const m = modules[0];
 
-  // Deadline = upcoming Sunday at 11:59 PM
-  const deadlineDate = new Date(now);
-  let addDays = (7 - now.getDay()) % 7;
-  if (addDays === 0) addDays = 7;
-  deadlineDate.setDate(now.getDate() + addDays);
-  const deadline = deadlineDate.toLocaleDateString("en-US", { weekday: "long", day: "numeric", month: "long", year: "numeric" }) + " at 11:59 PM";
+  const [{ data: checkpoints }, { data: quiz }] = await Promise.all([
+    supabase.from("checkpoint_questions").select("*").eq("module_id", m.id).order("order_index"),
+    supabase.from("quiz_questions").select("*").eq("module_id", m.id).order("order_index"),
+  ]);
 
-  return { id, title, month: monthLabel, deadline };
+  return {
+    id: m.id,
+    code: m.module_code,
+    title: m.title,
+    month: m.month_label,
+    videoUrl: m.video_url,
+    passScore: m.pass_score || 7,
+    windowClose: m.window_close,
+    checkpoints: (checkpoints || []).map(c => ({
+      at: c.at_percent,
+      question: c.question_text,
+      options: [c.option_a, c.option_b, c.option_c, c.option_d],
+      answer: c.correct_answer,
+    })),
+    quiz: (quiz || []).map(q => ({
+      q: q.question_text,
+      options: [q.option_a, q.option_b, q.option_c, q.option_d],
+      answer: q.correct_answer,
+    })),
+  };
 }
 
-const MODULE_META = getModuleMeta();
+async function fetchLatestModuleForAdmin() {
+  const { data: modules } = await supabase
+    .from("training_modules")
+    .select("*")
+    .order("created_at", { ascending: false })
+    .limit(1);
+  return modules && modules[0] ? modules[0] : null;
+}
 
-const CURRENT_MODULE = {
-  ...MODULE_META,
-  windowOpen: true, // set false to preview the locked screen
-  checkpoints: [
-    { at: 15, question: "What is the primary purpose of this Internal Training?", options: ["Social gathering", "Safety briefing and awareness", "Performance review", "Team lunch"], answer: 1 },
-    { at: 40, question: "How often should emergency exits be checked?", options: ["Monthly", "Yearly", "Daily before work starts", "Only after incidents"], answer: 2 },
-    { at: 70, question: "Who is responsible for reporting a safety hazard?", options: ["Only the supervisor", "Only the safety officer", "Every employee", "Only management"], answer: 2 },
-  ],
-  quiz: [
-    { q: "What does TBM stand for?", options: ["Team Building Meeting", "Toolbox Meeting", "Technical Briefing Manual", "Task Board Monitor"], answer: 1 },
-    { q: "PPE stands for:", options: ["Personal Protective Equipment", "Plant Process Evaluation", "Project Planning Excel", "People Performance Efficiency"], answer: 0 },
-    { q: "In case of a fire, the first action is:", options: ["Call your family", "Run to the exit immediately", "Activate the fire alarm and alert others", "Continue working"], answer: 2 },
-    { q: "A near-miss incident should be:", options: ["Ignored if no injury occurred", "Reported immediately", "Discussed only with friends", "Kept private"], answer: 1 },
-    { q: "The correct way to lift heavy objects is:", options: ["Bend at the waist", "Twist your body while lifting", "Bend your knees and keep back straight", "Ask someone else always"], answer: 2 },
-    { q: "Chemical spills must be:", options: ["Left to dry on their own", "Reported and cleaned per SOP", "Covered with paper", "Ignored if small"], answer: 1 },
-    { q: "Working at heights requires:", options: ["Just a helmet", "Proper harness and fall protection", "Only gloves", "Nothing extra"], answer: 1 },
-    { q: "Emergency contact numbers should be:", options: ["Memorized by supervisors only", "Posted visibly at all work areas", "Saved only in manager's phone", "Not necessary"], answer: 1 },
-    { q: "A safety data sheet (SDS) provides:", options: ["Employee salary info", "Chemical hazard and handling information", "Work schedule", "Performance targets"], answer: 1 },
-    { q: "Training attendance is mandatory because:", options: ["It's a company tradition", "It ensures everyone is informed and safe", "Managers require it for reports only", "It's just a formality"], answer: 1 },
-  ],
-};
+async function checkExistingCompletion(employeeId, moduleId) {
+  const { data } = await supabase
+    .from("completions")
+    .select("*")
+    .eq("employee_id", employeeId)
+    .eq("module_id", moduleId)
+    .maybeSingle();
+  return data;
+}
 
-const COMPLETIONS_KEY = "akts_completions";
-function getCompletions() { try { return JSON.parse(localStorage.getItem(COMPLETIONS_KEY) || "{}"); } catch { return {}; } }
-function saveCompletion(userId, data) { const all = getCompletions(); all[userId] = { ...all[userId], [CURRENT_MODULE.id]: data }; localStorage.setItem(COMPLETIONS_KEY, JSON.stringify(all)); }
-function getUserCompletion(userId) { const all = getCompletions(); return all[userId]?.[CURRENT_MODULE.id] || null; }
+function formatDeadline(windowClose) {
+  if (!windowClose) return "the end of this session";
+  return new Date(windowClose).toLocaleDateString("en-US", { weekday: "long", day: "numeric", month: "long", year: "numeric" })
+    + " at " + new Date(windowClose).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+}
 
 // ─── STYLES — clean white / blue corporate theme ─────────────────────────────
 const css = `
@@ -90,18 +105,14 @@ const css = `
   }
 
   body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--ink); min-height: 100vh; -webkit-font-smoothing: antialiased; }
-
   h1,h2,h3,h4 { font-family: 'Inter', sans-serif; }
 
-  /* ── LOGIN ── */
   .login-page { min-height: 100vh; background: var(--bg); display: flex; flex-direction: column; align-items: center; padding: 56px 20px 40px; }
-
   .login-brandrow { display: flex; align-items: center; gap: 10px; margin-bottom: 36px; }
   .login-brandrow-icon { width: 34px; height: 34px; background: var(--blue); border-radius: 9px; display: flex; align-items: center; justify-content: center; }
   .login-brandrow-name { font-weight: 700; font-size: 16px; color: var(--ink); letter-spacing: -0.2px; }
 
   .login-card { background: var(--surface); border-radius: var(--radius-lg); padding: 40px; width: 100%; max-width: 400px; box-shadow: 0 1px 2px rgba(0,0,0,0.04), 0 8px 24px rgba(0,0,0,0.06); border: 1px solid var(--border); }
-
   .login-card-title { font-size: 22px; font-weight: 700; color: var(--ink); margin-bottom: 4px; letter-spacing: -0.3px; text-align: center; }
   .login-card-sub { font-size: 13px; color: var(--muted); margin-bottom: 28px; text-align: center; }
 
@@ -121,6 +132,7 @@ const css = `
   .btn-dark:hover { background: #000; }
 
   .error-box { background: #fef2f2; border: 1px solid #fecaca; color: var(--red); padding: 10px 14px; border-radius: 10px; font-size: 13px; margin-bottom: 16px; }
+  .success-box { background: #f0fdf4; border: 1px solid #bbf7d0; color: var(--green); padding: 10px 14px; border-radius: 10px; font-size: 13px; margin-bottom: 16px; }
 
   .login-contact { margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--border); text-align: center; font-size: 12px; color: var(--muted); line-height: 1.7; }
 
@@ -129,10 +141,8 @@ const css = `
   .login-footer-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; }
   .login-footer-item { display: flex; flex-direction: column; align-items: center; gap: 8px; font-size: 12.5px; color: var(--muted); font-weight: 500; }
   .login-footer-dot { width: 36px; height: 36px; background: var(--blue-light); border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 15px; }
-
   @media (max-width: 640px) { .login-footer-grid { grid-template-columns: 1fr 1fr; } }
 
-  /* ── TOPBAR ── */
   .topbar { background: var(--surface); height: 56px; padding: 0 28px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 100; border-bottom: 1px solid var(--border); }
   .topbar-left { display: flex; align-items: center; gap: 10px; }
   .topbar-logo { width: 26px; height: 26px; background: var(--blue); border-radius: 7px; display: flex; align-items: center; justify-content: center; }
@@ -142,7 +152,6 @@ const css = `
   .sign-out-btn { background: transparent; border: 1px solid var(--border); color: var(--muted); padding: 5px 12px; border-radius: 8px; font-size: 12px; cursor: pointer; font-family: 'Inter', sans-serif; transition: all 0.15s; }
   .sign-out-btn:hover { border-color: var(--blue); color: var(--blue); }
 
-  /* ── MAIN ── */
   .main { max-width: 800px; margin: 0 auto; padding: 32px 24px; }
   .main-wide { max-width: 920px; margin: 0 auto; padding: 32px 24px; }
 
@@ -159,27 +168,22 @@ const css = `
   .step.active .step-num { background: var(--blue); color: #fff; }
   .step.done .step-num { background: #22c55e; color: #fff; }
 
-  /* ── LANGUAGE SCREEN ── */
   .lang-page { min-height: 100vh; background: var(--bg); display: flex; align-items: center; justify-content: center; padding: 24px; }
   .lang-card { background: var(--surface); border-radius: var(--radius-lg); padding: 40px; width: 100%; max-width: 420px; box-shadow: 0 1px 2px rgba(0,0,0,0.04), 0 8px 24px rgba(0,0,0,0.06); border: 1px solid var(--border); }
   .lang-card-top { display: flex; align-items: center; gap: 10px; margin-bottom: 28px; justify-content: center; }
   .lang-card-logo-icon { width: 30px; height: 30px; background: var(--blue); border-radius: 8px; display: flex; align-items: center; justify-content: center; }
   .lang-card-name { font-weight: 700; font-size: 13px; color: var(--ink); }
-
   .lang-title { font-size: 21px; font-weight: 700; color: var(--ink); margin-bottom: 4px; letter-spacing: -0.3px; text-align: center; }
   .lang-sub { font-size: 13px; color: var(--muted); margin-bottom: 22px; line-height: 1.6; text-align: center; }
-
   .lang-select-wrap { position: relative; margin-bottom: 16px; }
   .lang-select { width: 100%; padding: 13px 42px 13px 14px; background: var(--surface); border: 1.5px solid var(--border); border-radius: var(--radius); font-size: 14px; font-family: 'Inter', sans-serif; color: var(--ink); font-weight: 500; outline: none; appearance: none; cursor: pointer; transition: all 0.15s; }
   .lang-select:focus { border-color: var(--blue); box-shadow: 0 0 0 3px var(--blue-light); }
   .lang-arrow { position: absolute; right: 14px; top: 50%; transform: translateY(-50%); pointer-events: none; color: var(--muted); }
-
   .lang-preview { display: flex; align-items: center; gap: 12px; padding: 13px 16px; background: var(--blue-light); border: 1.5px solid var(--blue-border); border-radius: var(--radius); margin-bottom: 18px; }
   .lang-preview-flag { font-size: 24px; }
   .lang-preview-name { font-weight: 700; font-size: 14px; color: var(--ink); }
   .lang-preview-native { font-size: 12px; color: var(--muted); }
 
-  /* ── VIDEO ── */
   .video-wrap { position: relative; background: #000; border-radius: var(--radius-lg); overflow: hidden; aspect-ratio: 16/9; margin-bottom: 14px; }
   .video-wrap iframe { width: 100%; height: 100%; border: none; }
   .video-overlay { position: absolute; inset: 0; background: rgba(15,20,28,0.92); display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 14px; z-index: 10; border-radius: var(--radius-lg); }
@@ -191,7 +195,6 @@ const css = `
   .progress-track { background: #e5e7eb; border-radius: 100px; height: 5px; width: 100%; overflow: hidden; }
   .progress-fill { height: 100%; background: var(--blue); border-radius: 100px; transition: width 0.4s; }
 
-  /* ── MODAL ── */
   .modal-backdrop { position: fixed; inset: 0; background: rgba(15,20,28,0.6); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 24px; }
   .modal { background: var(--surface); border-radius: var(--radius-lg); padding: 32px; max-width: 460px; width: 100%; box-shadow: 0 24px 64px rgba(0,0,0,0.25); }
   .modal-badge { display: inline-flex; align-items: center; gap: 6px; background: var(--blue-light); color: var(--blue); font-size: 11px; font-weight: 700; letter-spacing: 0.5px; padding: 4px 11px; border-radius: 100px; margin-bottom: 14px; }
@@ -204,7 +207,6 @@ const css = `
   .option-btn.wrong { border-color: #ef4444; background: #fef2f2; color: var(--red); }
   .option-letter { width: 24px; height: 24px; border-radius: 6px; background: var(--bg); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 10px; flex-shrink: 0; }
 
-  /* ── QUIZ ── */
   .quiz-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; flex-wrap: wrap; gap: 10px; }
   .q-counter { font-size: 11px; font-weight: 700; color: var(--muted); letter-spacing: 0.5px; text-transform: uppercase; }
   .q-badge { background: var(--blue-light); color: var(--blue); padding: 4px 13px; border-radius: 100px; font-size: 11px; font-weight: 700; }
@@ -213,7 +215,6 @@ const css = `
   .result-circle.pass { background: #f0fdf4; color: var(--green); border: 3px solid #22c55e; }
   .result-circle.fail { background: #fef2f2; color: var(--red); border: 3px solid #ef4444; }
 
-  /* ── ACK ── */
   .ack-hero { background: var(--blue-light); border-radius: var(--radius-lg); padding: 32px; text-align: center; color: var(--ink); margin-bottom: 18px; border: 1px solid var(--blue-border); }
   .ack-icon { font-size: 40px; margin-bottom: 10px; }
   .ack-title { font-size: 22px; font-weight: 700; margin-bottom: 8px; color: var(--blue-dark); letter-spacing: -0.3px; }
@@ -225,7 +226,6 @@ const css = `
   .cert-name { font-size: 20px; font-weight: 700; margin: 4px 0; letter-spacing: -0.3px; }
   .cert-detail { font-size: 13px; color: var(--muted); margin-bottom: 3px; }
 
-  /* ── ADMIN ── */
   .admin-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 14px; margin-bottom: 24px; }
   .stat-card { background: var(--surface); border-radius: var(--radius-lg); padding: 20px 22px; border: 1px solid var(--border); }
   .stat-num { font-size: 32px; font-weight: 800; line-height: 1; margin-bottom: 4px; letter-spacing: -0.5px; color: var(--ink); }
@@ -248,8 +248,12 @@ const css = `
   .form-input-light { width: 100%; padding: 12px 14px; background: var(--surface); border: 1.5px solid var(--border); border-radius: var(--radius); font-size: 14px; font-family: 'Inter', sans-serif; color: var(--ink); outline: none; transition: all 0.15s; margin-bottom: 16px; }
   .form-input-light:focus { border-color: var(--blue); box-shadow: 0 0 0 3px var(--blue-light); }
 
-  /* ── LOCKED ── */
   .locked-icon { width: 68px; height: 68px; background: var(--blue-light); border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 18px; font-size: 26px; border: 1.5px solid var(--blue-border); }
+
+  .spinner { width: 32px; height: 32px; border: 3px solid var(--border); border-top-color: var(--blue); border-radius: 50%; animation: spin 0.7s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .loading-screen { min-height: 100vh; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 14px; background: var(--bg); }
+  .loading-text { font-size: 13px; color: var(--muted); }
 
   .divider { height: 1px; background: var(--border); margin: 18px 0; }
 
@@ -276,6 +280,18 @@ function LogoIcon({ size = 26, color = "#fff" }) {
       <circle cx="15" cy="7" r="3.5" stroke={color} strokeWidth="1.5"/>
       <path d="M13.5 7l1 1 2-2" stroke={color} strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
     </svg>
+  );
+}
+
+function LoadingScreen({ text = "Loading…" }) {
+  return (
+    <>
+      <style>{css}</style>
+      <div className="loading-screen">
+        <div className="spinner"/>
+        <div className="loading-text">{text}</div>
+      </div>
+    </>
   );
 }
 
@@ -317,14 +333,24 @@ function LoginScreen({ onLogin }) {
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const handle = () => {
+  const handle = async () => {
+    if (!id.trim() || !pw) { setErr("Please enter both Employee ID and password."); return; }
     setErr(""); setLoading(true);
-    setTimeout(() => {
+    try {
+      const { data, error } = await supabase.rpc("login_employee", {
+        p_login_id: id.trim().toLowerCase(),
+        p_password: pw,
+      });
+      if (error || !data || data.length === 0) {
+        setErr("Invalid Employee ID or password. Please try again.");
+        setLoading(false);
+        return;
+      }
+      onLogin(data[0]);
+    } catch (e) {
+      setErr("Connection issue — please check your internet and try again.");
       setLoading(false);
-      const user = MOCK_USERS[id.trim().toLowerCase()];
-      if (!user || user.password !== pw) { setErr("Invalid Employee ID or password. Please try again."); return; }
-      onLogin({ ...user, id: id.trim().toLowerCase() });
-    }, 600);
+    }
   };
 
   return (
@@ -343,7 +369,7 @@ function LoginScreen({ onLogin }) {
           {err && <div className="error-box">⚠ {err}</div>}
 
           <label className="form-label">Employee ID</label>
-          <input className="form-input" placeholder="e.g. EMP001" value={id} onChange={e=>setId(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handle()}/>
+          <input className="form-input" placeholder="e.g. A-049" value={id} onChange={e=>setId(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handle()}/>
 
           <label className="form-label">Password</label>
           <input className="form-input" type="password" placeholder="Enter your password" value={pw} onChange={e=>setPw(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handle()}/>
@@ -451,7 +477,7 @@ function CheckpointModal({ checkpoint, onPass }) {
   );
 }
 
-function VideoScreen({ user, language, onComplete }) {
+function VideoScreen({ user, language, moduleData, onComplete }) {
   const [progress, setProgress] = useState(0);
   const [checkpoint, setCheckpoint] = useState(null);
   const [passed, setPassed] = useState([]);
@@ -461,12 +487,12 @@ function VideoScreen({ user, language, onComplete }) {
 
   useEffect(() => {
     if (!started) return;
-    const next = CURRENT_MODULE.checkpoints.find(cp=>!passed.includes(cp.at)&&sim>=cp.at);
+    const next = moduleData.checkpoints.find(cp=>!passed.includes(cp.at)&&sim>=cp.at);
     if (next) { setCheckpoint(next); return; }
     if (sim>=100) { setProgress(100); return; }
     const t = setTimeout(()=>setSim(p=>Math.min(p+0.4,100)),200);
     return ()=>clearTimeout(t);
-  }, [sim,started,passed]);
+  }, [sim,started,passed,moduleData]);
 
   useEffect(()=>setProgress(sim),[sim]);
 
@@ -478,18 +504,18 @@ function VideoScreen({ user, language, onComplete }) {
         <div className="main">
           <div className="module-card">
             <div className="module-tag">STEP 2 OF 4 — TRAINING VIDEO</div>
-            <div className="module-title">{CURRENT_MODULE.title}</div>
-            <div className="module-sub">{lang?.flag} {lang?.label} · {CURRENT_MODULE.checkpoints.length} checkpoints · Watch fully to unlock quiz</div>
+            <div className="module-title">{moduleData.title}</div>
+            <div className="module-sub">{lang?.flag} {lang?.label} · {moduleData.checkpoints.length} checkpoints · Watch fully to unlock quiz</div>
             <StepIndicator current={2}/>
           </div>
           <div style={{background:"#fff",borderRadius:"18px",padding:"26px",border:"1px solid var(--border)"}}>
             <div className="video-wrap">
-              <iframe src={VIDEO_URL} allow="autoplay; encrypted-media" title="Training Video"/>
+              <iframe src={moduleData.videoUrl} allow="autoplay; encrypted-media" title="Training Video"/>
               {!started && (
                 <div className="video-overlay">
                   <button className="play-btn" onClick={()=>setStarted(true)}>▶</button>
                   <div className="overlay-title">Ready to begin?</div>
-                  <div className="overlay-sub">{CURRENT_MODULE.checkpoints.length} checkpoint questions will appear during the video. Do not close this page.</div>
+                  <div className="overlay-sub">{moduleData.checkpoints.length} checkpoint questions will appear during the video. Do not close this page.</div>
                 </div>
               )}
             </div>
@@ -499,7 +525,7 @@ function VideoScreen({ user, language, onComplete }) {
               <span style={{fontWeight:600,color:progress>=100?"var(--green)":"var(--ink)"}}>{Math.round(progress)}%</span>
             </div>
             <div style={{display:"flex",gap:"7px",flexWrap:"wrap"}}>
-              {CURRENT_MODULE.checkpoints.map(cp=>(
+              {moduleData.checkpoints.map(cp=>(
                 <div key={cp.at} style={{fontSize:"12px",padding:"5px 12px",borderRadius:"100px",fontWeight:500,background:passed.includes(cp.at)?"#f0fdf4":"var(--bg)",color:passed.includes(cp.at)?"var(--green)":"var(--muted)",border:`1px solid ${passed.includes(cp.at)?"#bbf7d0":"var(--border)"}`}}>
                   {passed.includes(cp.at)?"✓":"○"} Checkpoint {cp.at}%
                 </div>
@@ -522,23 +548,24 @@ function VideoScreen({ user, language, onComplete }) {
   );
 }
 
-function QuizScreen({ user, language, onComplete }) {
+function QuizScreen({ user, language, moduleData, onComplete }) {
   const [current, setCurrent] = useState(0);
   const [answers, setAnswers] = useState({});
   const [submitted, setSubmitted] = useState(false);
   const [score, setScore] = useState(0);
   const [attempt, setAttempt] = useState(1);
   const letters = ["A","B","C","D"];
-  const q = CURRENT_MODULE.quiz[current];
+  const q = moduleData.quiz[current];
+  const passScore = moduleData.passScore || 7;
 
   const handleNext = () => {
-    if (current<CURRENT_MODULE.quiz.length-1) { setCurrent(c=>c+1); return; }
-    let s=0; CURRENT_MODULE.quiz.forEach((q,i)=>{ if(answers[i]===q.answer) s++; });
+    if (current<moduleData.quiz.length-1) { setCurrent(c=>c+1); return; }
+    let s=0; moduleData.quiz.forEach((q,i)=>{ if(answers[i]===q.answer) s++; });
     setScore(s); setSubmitted(true);
   };
 
   if (submitted) {
-    const pass = score>=7;
+    const pass = score>=passScore;
     return (
       <>
         <style>{css}</style>
@@ -547,10 +574,10 @@ function QuizScreen({ user, language, onComplete }) {
           <div className="main">
             <div className="module-card"><div className="module-tag">STEP 3 OF 4 — RESULTS</div><StepIndicator current={pass?4:3}/></div>
             <div style={{background:"#fff",borderRadius:"18px",padding:"36px",textAlign:"center",border:"1px solid var(--border)"}}>
-              <div className={`result-circle ${pass?"pass":"fail"}`}>{score}/10<div style={{fontSize:"10px",fontWeight:700,marginTop:"3px"}}>{pass?"PASS":"FAIL"}</div></div>
+              <div className={`result-circle ${pass?"pass":"fail"}`}>{score}/{moduleData.quiz.length}<div style={{fontSize:"10px",fontWeight:700,marginTop:"3px"}}>{pass?"PASS":"FAIL"}</div></div>
               <h2 style={{fontSize:"20px",fontWeight:700,marginBottom:"8px",letterSpacing:"-0.3px"}}>{pass?"Well Done! 🎉":"Not Quite There"}</h2>
               <p style={{color:"var(--muted)",fontSize:"14px",lineHeight:1.7,marginBottom:"24px",maxWidth:"360px",margin:"0 auto 24px"}}>
-                {pass?`You scored ${score}/10 (${score*10}%). Proceed to sign your attendance.`:`You scored ${score}/10. Minimum 7/10 required. ${attempt<3?`${3-attempt} attempt(s) remaining.`:"All 3 attempts used. Your manager has been notified."}`}
+                {pass?`You scored ${score}/${moduleData.quiz.length}. Proceed to sign your attendance.`:`You scored ${score}/${moduleData.quiz.length}. Minimum ${passScore}/${moduleData.quiz.length} required. ${attempt<3?`${3-attempt} attempt(s) remaining.`:"All 3 attempts used. Your manager has been notified."}`}
               </p>
               {!pass&&attempt<3&&<button className="btn-outline" style={{marginBottom:"12px"}} onClick={()=>{setAttempt(a=>a+1);setAnswers({});setCurrent(0);setSubmitted(false);setScore(0);}}>🔄 Retry (Attempt {attempt+1}/3)</button>}
               {pass&&<button className="btn-primary" style={{maxWidth:"280px",margin:"0 auto"}} onClick={()=>onComplete(score)}>Complete & Sign Attendance →</button>}
@@ -571,10 +598,10 @@ function QuizScreen({ user, language, onComplete }) {
           <div className="module-card"><div className="module-tag">STEP 3 OF 4 — KNOWLEDGE CHECK</div><StepIndicator current={3}/></div>
           <div style={{background:"#fff",borderRadius:"18px",padding:"30px",border:"1px solid var(--border)"}}>
             <div className="quiz-header">
-              <div className="q-counter">Question {current+1} of {CURRENT_MODULE.quiz.length}</div>
+              <div className="q-counter">Question {current+1} of {moduleData.quiz.length}</div>
               <div className="q-badge">Attempt {attempt}/3</div>
             </div>
-            <div className="progress-track" style={{marginBottom:"22px"}}><div className="progress-fill" style={{width:`${(current/CURRENT_MODULE.quiz.length)*100}%`}}/></div>
+            <div className="progress-track" style={{marginBottom:"22px"}}><div className="progress-fill" style={{width:`${(current/moduleData.quiz.length)*100}%`}}/></div>
             <div className="modal-q" style={{fontSize:"16px"}}>{q.q}</div>
             {q.options.map((opt,i)=>(
               <button key={i} className={`option-btn ${answers[current]===i?"selected":""}`} onClick={()=>setAnswers({...answers,[current]:i})}>
@@ -584,7 +611,7 @@ function QuizScreen({ user, language, onComplete }) {
             <div style={{display:"flex",gap:"10px",marginTop:"8px"}}>
               {current>0&&<button className="btn-outline" style={{flex:1}} onClick={()=>setCurrent(c=>c-1)}>← Back</button>}
               <button className="btn-primary" style={{flex:2}} disabled={answers[current]===undefined} onClick={handleNext}>
-                {current<CURRENT_MODULE.quiz.length-1?"Next →":"Submit Quiz →"}
+                {current<moduleData.quiz.length-1?"Next →":"Submit Quiz →"}
               </button>
             </div>
           </div>
@@ -594,16 +621,22 @@ function QuizScreen({ user, language, onComplete }) {
   );
 }
 
-function AcknowledgementScreen({ user, score, language, onDone }) {
+function AcknowledgementScreen({ user, score, language, moduleData, onDone }) {
   const [checked, setChecked] = useState(false);
   const [signed, setSigned] = useState(false);
+  const [saving, setSaving] = useState(false);
   const lang = LANGUAGES.find(l=>l.code===language);
   const now = new Date().toLocaleString("en-SG",{dateStyle:"full",timeStyle:"short"});
 
-  const handleSign = () => {
+  const handleSign = async () => {
+    setSaving(true);
+    await supabase.from("completions").upsert(
+      { employee_id: user.id, module_id: moduleData.id, score, language },
+      { onConflict: "employee_id,module_id" }
+    );
     setSigned(true);
-    saveCompletion(user.id,{score,language,completedAt:now,name:user.name});
-    setTimeout(onDone,400);
+    setSaving(false);
+    setTimeout(onDone, 400);
   };
 
   return (
@@ -617,21 +650,21 @@ function AcknowledgementScreen({ user, score, language, onDone }) {
             <div className="cert-block">
               <div className="cert-label">Training Completion Record</div>
               <div className="cert-name">{user.name}</div>
-              <div className="cert-detail">Employee ID: {user.id.toUpperCase()} · {user.department}</div>
-              <div className="cert-detail">{CURRENT_MODULE.title}</div>
-              <div className="cert-detail">Score: <strong>{score}/10</strong> ({score*10}%) · {lang?.flag} {lang?.label}</div>
+              <div className="cert-detail">Employee ID: {user.e_no} · {user.plant}</div>
+              <div className="cert-detail">{moduleData.title}</div>
+              <div className="cert-detail">Score: <strong>{score}/{moduleData.quiz.length}</strong> · {lang?.flag} {lang?.label}</div>
               <div style={{fontSize:"12px",color:"#9ca3af",marginTop:"8px"}}>{now}</div>
             </div>
             <div style={{background:"var(--blue-light)",border:"1px solid var(--blue-border)",borderRadius:"12px",padding:"18px 20px",marginBottom:"20px",fontSize:"14px",lineHeight:1.8,color:"var(--ink)"}}>
               <strong>Declaration:</strong><br/>
-              I, <strong>{user.name}</strong>, confirm that I have fully watched the <strong>{CURRENT_MODULE.title}</strong> and completed the knowledge assessment. I understand the content and commit to applying these practices in my daily work.
+              I, <strong>{user.name}</strong>, confirm that I have fully watched the <strong>{moduleData.title}</strong> and completed the knowledge assessment. I understand the content and commit to applying these practices in my daily work.
             </div>
             <label style={{display:"flex",alignItems:"flex-start",gap:"12px",cursor:"pointer",marginBottom:"22px",fontSize:"14px",color:"var(--ink)",fontWeight:500}}>
               <input type="checkbox" checked={checked} onChange={e=>setChecked(e.target.checked)} style={{width:"17px",height:"17px",flexShrink:0,marginTop:"2px",accentColor:"var(--blue)"}}/>
               I agree to the above declaration and confirm my attendance for this training session.
             </label>
-            <button className="btn-primary" disabled={!checked||signed} onClick={handleSign}>
-              {signed?"✓ Recorded!":"Sign & Submit Attendance →"}
+            <button className="btn-primary" disabled={!checked||signed||saving} onClick={handleSign}>
+              {saving?"Saving…":signed?"✓ Recorded!":"Sign & Submit Attendance →"}
             </button>
           </div>
         </div>
@@ -640,7 +673,7 @@ function AcknowledgementScreen({ user, score, language, onDone }) {
   );
 }
 
-function AlreadyDoneScreen({ user, completion, onLogout }) {
+function AlreadyDoneScreen({ user, completion, moduleData, onLogout }) {
   const lang = LANGUAGES.find(l=>l.code===completion?.language);
   return (
     <>
@@ -655,9 +688,9 @@ function AlreadyDoneScreen({ user, completion, onLogout }) {
         <div className="cert-block">
           <div className="cert-label">Certificate of Completion</div>
           <div className="cert-name">{user.name}</div>
-          <div className="cert-detail">{CURRENT_MODULE.month} Internal Training</div>
+          <div className="cert-detail">{moduleData?.title || "Internal Training"}</div>
           <div className="cert-detail">Score: <strong>{completion?.score}/10</strong> · {lang?.flag} {lang?.label}</div>
-          <div style={{fontSize:"12px",color:"#9ca3af",marginTop:"8px"}}>{completion?.completedAt}</div>
+          <div style={{fontSize:"12px",color:"#9ca3af",marginTop:"8px"}}>{completion?.completed_at ? new Date(completion.completed_at).toLocaleString("en-SG",{dateStyle:"full",timeStyle:"short"}) : ""}</div>
         </div>
       </div>
     </>
@@ -673,23 +706,65 @@ function LockedScreen({ user, onLogout }) {
         <div style={{background:"#fff",borderRadius:"18px",padding:"48px 32px",border:"1px solid var(--border)"}}>
           <div className="locked-icon">🔐</div>
           <h2 style={{fontSize:"21px",fontWeight:700,marginBottom:"8px",letterSpacing:"-0.3px"}}>Training Window Closed</h2>
-          <p style={{color:"var(--muted)",fontSize:"14px",lineHeight:1.7}}>The next session is not yet live.<br/>You will be notified when it opens.</p>
-          <div style={{background:"var(--bg)",borderRadius:"12px",padding:"18px",marginTop:"22px"}}>
-            <div style={{fontSize:"10px",color:"var(--muted)",textTransform:"uppercase",letterSpacing:"1px",marginBottom:"4px"}}>Next Session Opens</div>
-            <div style={{fontWeight:700,fontSize:"16px"}}>Check back next month</div>
-          </div>
+          <p style={{color:"var(--muted)",fontSize:"14px",lineHeight:1.7}}>There is no active training session right now.<br/>You will be notified when the next one opens.</p>
         </div>
       </div>
     </>
   );
 }
 
-function AdminPanel({ onBack }) {
-  const completions = getCompletions();
-  const allUsers = Object.entries(MOCK_USERS).filter(([,u])=>u.role==="employee");
-  const completed = allUsers.filter(([id])=>completions[id]?.[CURRENT_MODULE.id]);
-  const pending = allUsers.filter(([id])=>!completions[id]?.[CURRENT_MODULE.id]);
-  const avgScore = completed.length?Math.round(completed.reduce((s,[id])=>s+(completions[id][CURRENT_MODULE.id].score||0),0)/completed.length*10):0;
+function AdminPanel({ user, onBack }) {
+  const [loading, setLoading] = useState(true);
+  const [employees, setEmployees] = useState([]);
+  const [completions, setCompletions] = useState([]);
+  const [moduleRow, setModuleRow] = useState(null);
+  const [videoUrlInput, setVideoUrlInput] = useState("");
+  const [windowOpenInput, setWindowOpenInput] = useState(true);
+  const [windowCloseInput, setWindowCloseInput] = useState("");
+  const [saveMsg, setSaveMsg] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    async function load() {
+      setLoading(true);
+      const mod = await fetchLatestModuleForAdmin();
+      setModuleRow(mod);
+      if (mod) {
+        setVideoUrlInput(mod.video_url || "");
+        setWindowOpenInput(mod.window_open);
+        setWindowCloseInput(mod.window_close ? mod.window_close.slice(0,16) : "");
+      }
+
+      const { data: emps } = await supabase.from("employees").select("id, login_id, e_no, plant, name, role").eq("role","employee").order("name");
+      setEmployees(emps || []);
+
+      if (mod) {
+        const { data: comps } = await supabase.from("completions").select("*").eq("module_id", mod.id);
+        setCompletions(comps || []);
+      }
+      setLoading(false);
+    }
+    load();
+  }, []);
+
+  const handleSaveModule = async () => {
+    if (!moduleRow) return;
+    setSaving(true); setSaveMsg("");
+    const { error } = await supabase.from("training_modules").update({
+      video_url: videoUrlInput,
+      window_open: windowOpenInput,
+      window_close: windowCloseInput ? new Date(windowCloseInput).toISOString() : null,
+    }).eq("id", moduleRow.id);
+    setSaving(false);
+    setSaveMsg(error ? "⚠ Something went wrong saving." : "✓ Saved! Changes are live immediately for employees.");
+  };
+
+  if (loading) return <LoadingScreen text="Loading dashboard…"/>;
+
+  const completedIds = new Set(completions.map(c=>c.employee_id));
+  const completed = employees.filter(e=>completedIds.has(e.id));
+  const pending = employees.filter(e=>!completedIds.has(e.id));
+  const avgScore = completions.length ? Math.round(completions.reduce((s,c)=>s+c.score,0)/completions.length*10) : 0;
 
   return (
     <>
@@ -705,10 +780,10 @@ function AdminPanel({ onBack }) {
         <div className="main-wide">
           <div style={{marginBottom:"24px"}}>
             <div style={{fontSize:"24px",fontWeight:800,letterSpacing:"-0.3px",marginBottom:"3px"}}>Dashboard</div>
-            <div style={{fontSize:"13px",color:"var(--muted)"}}>{CURRENT_MODULE.title} · Closes {CURRENT_MODULE.deadline}</div>
+            <div style={{fontSize:"13px",color:"var(--muted)"}}>{moduleRow?.title || "No active module"} {moduleRow ? `· Closes ${formatDeadline(moduleRow.window_close)}` : ""}</div>
           </div>
           <div className="admin-stats">
-            <div className="stat-card"><div className="stat-num">{allUsers.length}</div><div className="stat-label">Total Employees</div></div>
+            <div className="stat-card"><div className="stat-num">{employees.length}</div><div className="stat-label">Total Employees</div></div>
             <div className="stat-card"><div className="stat-num green">{completed.length}</div><div className="stat-label">Completed</div></div>
             <div className="stat-card"><div className="stat-num red">{pending.length}</div><div className="stat-label">Pending</div></div>
             <div className="stat-card"><div className="stat-num blue">{avgScore}%</div><div className="stat-label">Avg. Score</div></div>
@@ -719,19 +794,19 @@ function AdminPanel({ onBack }) {
               <div style={{fontSize:"12px",color:"var(--blue)",cursor:"pointer",fontWeight:600}}>Export CSV →</div>
             </div>
             <table>
-              <thead><tr><th>Employee</th><th>Department</th><th>Status</th><th>Score</th><th>Language</th><th>Completed At</th></tr></thead>
+              <thead><tr><th>Employee</th><th>Plant</th><th>Status</th><th>Score</th><th>Language</th><th>Completed At</th></tr></thead>
               <tbody>
-                {allUsers.map(([id,u])=>{
-                  const c=completions[id]?.[CURRENT_MODULE.id];
-                  const lang=LANGUAGES.find(l=>l.code===c?.language);
+                {employees.map(emp=>{
+                  const c = completions.find(c=>c.employee_id===emp.id);
+                  const lang = LANGUAGES.find(l=>l.code===c?.language);
                   return (
-                    <tr key={id}>
-                      <td><strong>{u.name}</strong><br/><span style={{fontSize:"11px",color:"var(--muted)"}}>{id}</span></td>
-                      <td>{u.department}</td>
+                    <tr key={emp.id}>
+                      <td><strong>{emp.name}</strong><br/><span style={{fontSize:"11px",color:"var(--muted)"}}>{emp.e_no}</span></td>
+                      <td>{emp.plant}</td>
                       <td>{c?<span className="badge badge-green">✓ Done</span>:<span className="badge badge-red">Pending</span>}</td>
                       <td>{c?`${c.score}/10`:"—"}</td>
-                      <td>{c?`${lang?.flag} ${lang?.label}`:"—"}</td>
-                      <td style={{fontSize:"12px",color:"var(--muted)"}}>{c?.completedAt||"—"}</td>
+                      <td>{c?`${lang?.flag||""} ${lang?.label||c.language}`:"—"}</td>
+                      <td style={{fontSize:"12px",color:"var(--muted)"}}>{c?.completed_at?new Date(c.completed_at).toLocaleString("en-SG",{dateStyle:"medium",timeStyle:"short"}):"—"}</td>
                     </tr>
                   );
                 })}
@@ -739,15 +814,30 @@ function AdminPanel({ onBack }) {
             </table>
           </div>
           <div style={{background:"#fff",borderRadius:"18px",padding:"26px",border:"1px solid var(--border)"}}>
-            <div style={{fontWeight:700,fontSize:"15px",marginBottom:"6px"}}>📤 Upload Next Month's Training Video</div>
-            <div style={{fontSize:"12px",color:"var(--muted)",marginBottom:"18px"}}>Upload your video to YouTube as <strong>Unlisted</strong>, then paste the embed link below. Captions/multi-language video coming in a later phase — for now everyone watches the same English video.</div>
+            <div style={{fontWeight:700,fontSize:"15px",marginBottom:"6px"}}>📤 Manage This Month's Training</div>
+            <div style={{fontSize:"12px",color:"var(--muted)",marginBottom:"18px"}}>Update the video link or open/close the training window. Changes apply instantly — no redeploy needed.</div>
+
+            {saveMsg && <div className={saveMsg.startsWith("✓")?"success-box":"error-box"}>{saveMsg}</div>}
+
             <label className="form-label-light">Training Video URL (YouTube embed link)</label>
-            <input className="form-input-light" placeholder="https://www.youtube.com/embed/VIDEO_ID"/>
+            <input className="form-input-light" placeholder="https://www.youtube.com/embed/VIDEO_ID" value={videoUrlInput} onChange={e=>setVideoUrlInput(e.target.value)}/>
+
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"14px",marginBottom:"18px"}}>
-              <div><label className="form-label-light">Window Opens</label><input type="datetime-local" className="form-input-light"/></div>
-              <div><label className="form-label-light">Window Closes</label><input type="datetime-local" className="form-input-light"/></div>
+              <div>
+                <label className="form-label-light">Window Closes</label>
+                <input type="datetime-local" className="form-input-light" value={windowCloseInput} onChange={e=>setWindowCloseInput(e.target.value)}/>
+              </div>
+              <div style={{display:"flex",alignItems:"flex-end",paddingBottom:"16px"}}>
+                <label style={{display:"flex",alignItems:"center",gap:"8px",fontSize:"13px",fontWeight:500,color:"var(--ink)",cursor:"pointer"}}>
+                  <input type="checkbox" checked={windowOpenInput} onChange={e=>setWindowOpenInput(e.target.checked)} style={{width:"16px",height:"16px",accentColor:"var(--blue)"}}/>
+                  Training window is open
+                </label>
+              </div>
             </div>
-            <button className="btn-primary" style={{maxWidth:"200px"}}>Save & Schedule →</button>
+            <button className="btn-primary" style={{maxWidth:"200px"}} disabled={saving} onClick={handleSaveModule}>{saving?"Saving…":"Save Changes →"}</button>
+            <div style={{marginTop:"16px",fontSize:"12px",color:"var(--muted)"}}>
+              ℹ️ To change quiz questions, contact your developer for now — a self-serve question editor is planned for a future update.
+            </div>
           </div>
         </div>
       </div>
@@ -761,25 +851,53 @@ export default function App() {
   const [screen, setScreen] = useState("login");
   const [language, setLanguage] = useState(null);
   const [quizScore, setQuizScore] = useState(0);
+  const [moduleData, setModuleData] = useState(null);
+  const [completion, setCompletion] = useState(null);
+  const [appLoading, setAppLoading] = useState(false);
 
-  const handleLogin = (u) => {
-    setUser(u);
-    if (u.role==="admin") { setScreen("admin"); return; }
-    const done = getUserCompletion(u.id);
-    if (done) { setScreen("done"); return; }
-    if (!CURRENT_MODULE.windowOpen) { setScreen("locked"); return; }
+  const handleLogin = async (employee) => {
+    setUser(employee);
+    setAppLoading(true);
+
+    if (employee.role === "admin") {
+      setScreen("admin");
+      setAppLoading(false);
+      return;
+    }
+
+    const mod = await fetchActiveModule();
+    if (!mod) {
+      setModuleData(null);
+      setScreen("locked");
+      setAppLoading(false);
+      return;
+    }
+    setModuleData(mod);
+
+    const existing = await checkExistingCompletion(employee.id, mod.id);
+    if (existing) {
+      setCompletion(existing);
+      setScreen("done");
+      setAppLoading(false);
+      return;
+    }
+
     setScreen("language");
+    setAppLoading(false);
   };
 
-  const handleLogout = () => { setUser(null); setScreen("login"); setLanguage(null); };
+  const handleLogout = () => {
+    setUser(null); setScreen("login"); setLanguage(null); setModuleData(null); setCompletion(null);
+  };
 
+  if (appLoading) return <LoadingScreen text="Checking your training status…"/>;
   if (screen==="login") return <LoginScreen onLogin={handleLogin}/>;
   if (screen==="locked") return <LockedScreen user={user} onLogout={handleLogout}/>;
-  if (screen==="admin") return <AdminPanel onBack={handleLogout}/>;
-  if (screen==="done") return <AlreadyDoneScreen user={user} completion={getUserCompletion(user.id)} onLogout={handleLogout}/>;
+  if (screen==="admin") return <AdminPanel user={user} onBack={handleLogout}/>;
+  if (screen==="done") return <AlreadyDoneScreen user={user} completion={completion} moduleData={moduleData} onLogout={handleLogout}/>;
   if (screen==="language") return <LanguageScreen user={user} onSelect={l=>{setLanguage(l);setScreen("video");}}/>;
-  if (screen==="video") return <VideoScreen user={user} language={language} onComplete={()=>setScreen("quiz")}/>;
-  if (screen==="quiz") return <QuizScreen user={user} language={language} onComplete={s=>{setQuizScore(s);setScreen("ack");}}/>;
-  if (screen==="ack") return <AcknowledgementScreen user={user} score={quizScore} language={language} onDone={()=>setScreen("done")}/>;
+  if (screen==="video") return <VideoScreen user={user} language={language} moduleData={moduleData} onComplete={()=>setScreen("quiz")}/>;
+  if (screen==="quiz") return <QuizScreen user={user} language={language} moduleData={moduleData} onComplete={s=>{setQuizScore(s);setScreen("ack");}}/>;
+  if (screen==="ack") return <AcknowledgementScreen user={user} score={quizScore} language={language} moduleData={moduleData} onDone={()=>setScreen("done")}/>;
   return null;
 }
