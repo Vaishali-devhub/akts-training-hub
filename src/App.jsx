@@ -768,10 +768,14 @@ function QuizScreen({ user, language, moduleData, onComplete, onRewatch }) {
   const q = moduleData.quiz[current];
   const passScore = moduleData.passScore || 7;
 
-  const handleNext = () => {
+  const handleNext = async () => {
     if (current<moduleData.quiz.length-1) { setCurrent(c=>c+1); return; }
     let s=0; moduleData.quiz.forEach((q,i)=>{ if(answers[i]===q.answer) s++; });
     setScore(s); setSubmitted(true);
+    await supabase.from("quiz_attempts").insert({
+      employee_id: user.id, module_id: moduleData.id,
+      attempt_number: attempt, score: s, passed: s >= passScore, language,
+    });
   };
 
   if (submitted) {
@@ -933,6 +937,7 @@ function AdminPanel({ user, onBack }) {
   const [employees, setEmployees] = useState([]);
   const [completions, setCompletions] = useState([]);
   const [graceRows, setGraceRows] = useState([]);
+  const [attemptRows, setAttemptRows] = useState([]);
   const [moduleRow, setModuleRow] = useState(null);
   const [videoUrlInput, setVideoUrlInput] = useState("");
   const [windowOpenInput, setWindowOpenInput] = useState(true);
@@ -952,33 +957,53 @@ function AdminPanel({ user, onBack }) {
   const [newWindowClose, setNewWindowClose] = useState("");
   const [creatingMonth, setCreatingMonth] = useState(false);
 
+  const [allModules, setAllModules] = useState([]);
+  const [selectedModuleId, setSelectedModuleId] = useState(null);
+  const [switching, setSwitching] = useState(false);
+
+  const moduleRow = allModules.find(m => m.id === selectedModuleId) || null;
+  const isLatestModule = allModules.length > 0 && selectedModuleId === allModules[0].id;
+
   async function loadAll() {
     setLoading(true);
-    const mod = await fetchLatestModuleForAdmin();
-    setModuleRow(mod);
-    if (mod) {
-      setVideoUrlInput(mod.video_url || "");
-      setWindowOpenInput(mod.window_open);
-      setWindowCloseInput(mod.window_close ? mod.window_close.slice(0,16) : "");
-    }
+    const { data: modules } = await supabase.from("training_modules").select("*").order("created_at",{ascending:false});
+    setAllModules(modules || []);
 
     const { data: emps } = await supabase.from("employees").select("id, login_id, e_no, plant, name, role").eq("role","employee").order("name");
     setEmployees(emps || []);
 
-    if (mod) {
-      const { data: comps } = await supabase.from("completions").select("*").eq("module_id", mod.id);
-      setCompletions(comps || []);
-      const { data: grace } = await supabase.from("grace_access").select("*").eq("module_id", mod.id);
-      setGraceRows(grace || []);
-
-      const { data: quizRows } = await supabase.from("quiz_questions").select("*").eq("module_id", mod.id).order("order_index");
-      setQuizDraft((quizRows||[]).map(q => ({ id:q.id, question_text:q.question_text, options:[q.option_a,q.option_b,q.option_c,q.option_d], correct_answer:q.correct_answer })));
-
-      const { data: cpRows } = await supabase.from("checkpoint_questions").select("*").eq("module_id", mod.id).order("order_index");
-      setCheckpointDraft((cpRows||[]).map(c => ({ id:c.id, at_percent:c.at_percent, question_text:c.question_text, options:[c.option_a,c.option_b,c.option_c,c.option_d], correct_answer:c.correct_answer })));
+    if (modules && modules.length) {
+      setSelectedModuleId(modules[0].id);
+      await loadModuleDataFor(modules[0].id, modules);
     }
     setLoading(false);
   }
+
+  async function loadModuleDataFor(moduleId, modulesList) {
+    const list = modulesList || allModules;
+    const mod = list.find(m => m.id === moduleId);
+    setVideoUrlInput(mod?.video_url || "");
+    setWindowOpenInput(mod?.window_open ?? true);
+    setWindowCloseInput(mod?.window_close ? mod.window_close.slice(0,16) : "");
+
+    const { data: comps } = await supabase.from("completions").select("*").eq("module_id", moduleId);
+    setCompletions(comps || []);
+    const { data: grace } = await supabase.from("grace_access").select("*").eq("module_id", moduleId);
+    setGraceRows(grace || []);
+    const { data: attempts } = await supabase.from("quiz_attempts").select("*").eq("module_id", moduleId).order("attempted_at",{ascending:false});
+    setAttemptRows(attempts || []);
+    const { data: quizRows } = await supabase.from("quiz_questions").select("*").eq("module_id", moduleId).order("order_index");
+    setQuizDraft((quizRows||[]).map(q => ({ id:q.id, question_text:q.question_text, options:[q.option_a,q.option_b,q.option_c,q.option_d], correct_answer:q.correct_answer })));
+    const { data: cpRows } = await supabase.from("checkpoint_questions").select("*").eq("module_id", moduleId).order("order_index");
+    setCheckpointDraft((cpRows||[]).map(c => ({ id:c.id, at_percent:c.at_percent, question_text:c.question_text, options:[c.option_a,c.option_b,c.option_c,c.option_d], correct_answer:c.correct_answer })));
+  }
+
+  const handleSwitchModule = async (id) => {
+    setSwitching(true);
+    setSelectedModuleId(id);
+    await loadModuleDataFor(id);
+    setSwitching(false);
+  };
 
   useEffect(() => { loadAll(); }, []);
 
@@ -1006,8 +1031,6 @@ function AdminPanel({ user, onBack }) {
     setGraceRows(grace || []);
     setGrantingId(null);
   };
-
-  // ── Quiz / Checkpoint editor helpers ──
   const addQuizQ = () => setQuizDraft(d => [...d, { question_text:"", options:["","","",""], correct_answer:0 }]);
   const removeQuizQ = (i) => setQuizDraft(d => d.filter((_,idx)=>idx!==i));
   const updateQuizQ = (i, field, value) => setQuizDraft(d => d.map((q,idx)=> idx!==i ? q : { ...q, [field]: value }));
@@ -1077,14 +1100,17 @@ function AdminPanel({ user, onBack }) {
   };
 
   const handleExportCSV = () => {
-    const header = ["Employee","E-No","Plant","Status","Score","Language","Completed At"];
+    const header = ["Employee","E-No","Plant","Status","Score","Attempts","Language","Completed At"];
     const rows = employees.map(emp => {
       const c = completions.find(c=>c.employee_id===emp.id);
       const lang = LANGUAGES.find(l=>l.code===c?.language);
+      const empAttempts = attemptRows.filter(a=>a.employee_id===emp.id);
+      const bestAttempt = empAttempts.length ? empAttempts.reduce((best,a)=>a.score>best.score?a:best, empAttempts[0]) : null;
       return [
         emp.name, emp.e_no, emp.plant,
-        c ? "Done" : "Pending",
-        c ? `${c.score}/10` : "",
+        c ? "Done" : empAttempts.length ? "Attempted - Not Passed" : "Not Started",
+        c ? `${c.score}/10` : bestAttempt ? `${bestAttempt.score}/10 (best)` : "",
+        empAttempts.length,
         c ? (lang?.label || c.language) : "",
         c?.completed_at ? new Date(c.completed_at).toLocaleString("en-SG") : "",
       ];
@@ -1103,6 +1129,9 @@ function AdminPanel({ user, onBack }) {
 
   const completedIds = new Set(completions.map(c=>c.employee_id));
   const completed = employees.filter(e=>completedIds.has(e.id));
+  const attemptedIds = new Set(attemptRows.map(a=>a.employee_id));
+  const attemptedNotPassed = employees.filter(e=>!completedIds.has(e.id) && attemptedIds.has(e.id));
+  const neverStarted = employees.filter(e=>!completedIds.has(e.id) && !attemptedIds.has(e.id));
   const pending = employees.filter(e=>!completedIds.has(e.id));
   const avgScore = completions.length ? Math.round(completions.reduce((s,c)=>s+c.score,0)/completions.length*10) : 0;
   const completionRate = employees.length ? Math.round((completed.length/employees.length)*100) : 0;
@@ -1120,6 +1149,21 @@ function AdminPanel({ user, onBack }) {
           <button className="sign-out-btn" onClick={onBack}>← Exit Admin</button>
         </div>
         <div className="main-wide">
+          <div className="no-print" style={{marginBottom:"14px"}}>
+            <label className="form-label-light">Viewing Month</label>
+            <select className="form-input-light" style={{maxWidth:"360px",marginBottom:0}} value={selectedModuleId||""} onChange={e=>handleSwitchModule(e.target.value)} disabled={switching}>
+              {allModules.map((m,i)=>(
+                <option key={m.id} value={m.id}>{m.title} {i===0 ? "(Current)" : ""}</option>
+              ))}
+            </select>
+          </div>
+
+          {!isLatestModule && (
+            <div style={{background:"#fffbeb",border:"1px solid #fde68a",color:"#92400e",padding:"10px 14px",borderRadius:"10px",fontSize:"13px",marginBottom:"16px"}}>
+              📁 You're viewing a past month — this is read-only history. Switch to "(Current)" above to manage this month's settings.
+            </div>
+          )}
+
           <div style={{marginBottom:"24px",display:"flex",alignItems:"flex-start",justifyContent:"space-between",flexWrap:"wrap",gap:"12px"}}>
             <div>
               <div style={{fontSize:"24px",fontWeight:800,letterSpacing:"-0.3px",marginBottom:"3px"}}>Dashboard</div>
@@ -1131,7 +1175,8 @@ function AdminPanel({ user, onBack }) {
           <div className="admin-stats">
             <div className="stat-card"><div className="stat-num">{employees.length}</div><div className="stat-label">Total Employees</div></div>
             <div className="stat-card"><div className="stat-num green">{completed.length}</div><div className="stat-label">Completed</div></div>
-            <div className="stat-card"><div className="stat-num red">{pending.length}</div><div className="stat-label">Pending</div></div>
+            <div className="stat-card"><div className="stat-num" style={{color:"#b45309"}}>{attemptedNotPassed.length}</div><div className="stat-label">Attempted, Not Passed</div></div>
+            <div className="stat-card"><div className="stat-num red">{neverStarted.length}</div><div className="stat-label">Not Started</div></div>
             <div className="stat-card"><div className="stat-num blue">{avgScore}%</div><div className="stat-label">Avg. Score</div></div>
           </div>
 
@@ -1156,12 +1201,20 @@ function AdminPanel({ user, onBack }) {
                   const lang = LANGUAGES.find(l=>l.code===c?.language);
                   const grace = graceRows.find(g=>g.employee_id===emp.id);
                   const graceActive = grace && new Date(grace.expires_at) >= now;
+                  const empAttempts = attemptRows.filter(a=>a.employee_id===emp.id);
+                  const bestAttempt = empAttempts.length ? empAttempts.reduce((best,a)=>a.score>best.score?a:best, empAttempts[0]) : null;
                   return (
                     <tr key={emp.id}>
                       <td><strong>{emp.name}</strong><br/><span style={{fontSize:"11px",color:"var(--muted)"}}>{emp.e_no}</span></td>
                       <td>{emp.plant}</td>
-                      <td>{c?<span className="badge badge-green">✓ Done</span>:<span className="badge badge-red">Pending</span>}</td>
-                      <td>{c?`${c.score}/10`:"—"}</td>
+                      <td>
+                        {c
+                          ? <span className="badge badge-green">✓ Done</span>
+                          : empAttempts.length
+                            ? <span className="badge" style={{background:"#fef3c7",color:"#92400e"}}>⚠ Attempted ({empAttempts.length}x)</span>
+                            : <span className="badge badge-red">Not Started</span>}
+                      </td>
+                      <td>{c?`${c.score}/10`: bestAttempt ? `${bestAttempt.score}/10 (best)` : "—"}</td>
                       <td>{c?`${lang?.flag||""} ${lang?.label||c.language}`:"—"}</td>
                       <td style={{fontSize:"12px",color:"var(--muted)"}}>{c?.completed_at?new Date(c.completed_at).toLocaleString("en-SG",{dateStyle:"medium",timeStyle:"short"}):"—"}</td>
                       <td className="no-print">
@@ -1178,6 +1231,7 @@ function AdminPanel({ user, onBack }) {
             </table>
           </div>
 
+          {isLatestModule && (
           <div className="no-print" style={{background:"#fff",borderRadius:"18px",padding:"26px",border:"1px solid var(--border)"}}>
             <div style={{fontWeight:700,fontSize:"15px",marginBottom:"6px"}}>📤 Manage This Month's Training</div>
             <div style={{fontSize:"12px",color:"var(--muted)",marginBottom:"18px"}}>Update the video link or open/close the training window. Changes apply instantly — no redeploy needed.</div>
@@ -1204,6 +1258,7 @@ function AdminPanel({ user, onBack }) {
               ℹ️ Set "Window Closes" to 48 hours after you open it for the standard schedule. Use "Grant 24h Access" above for anyone who missed it.
             </div>
           </div>
+          )}
 
           <div className="no-print" style={{background:"#fff",borderRadius:"18px",padding:"26px",border:"1px solid var(--border)",marginTop:"18px"}}>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:showNewMonth?"18px":"0"}}>
@@ -1227,6 +1282,7 @@ function AdminPanel({ user, onBack }) {
             )}
           </div>
 
+          {isLatestModule && (
           <div className="no-print" style={{background:"#fff",borderRadius:"18px",padding:"26px",border:"1px solid var(--border)",marginTop:"18px"}}>
             <div style={{fontWeight:700,fontSize:"15px",marginBottom:"6px"}}>🎯 Mid-Video Checkpoint Questions</div>
             <div style={{fontSize:"12px",color:"var(--muted)",marginBottom:"18px"}}>These pop up and pause the video at the % mark you set. Mark which option is correct.</div>
@@ -1277,6 +1333,7 @@ function AdminPanel({ user, onBack }) {
             {quizSaveMsg && <div className={quizSaveMsg.startsWith("✓")?"success-box":"error-box"}>{quizSaveMsg}</div>}
             <button className="btn-primary" style={{maxWidth:"260px"}} disabled={quizSaving} onClick={handleSaveQuiz}>{quizSaving?"Saving…":"Save Quiz & Checkpoints →"}</button>
           </div>
+          )}
         </div>
       </div>
     </>
