@@ -953,7 +953,6 @@ function AdminPanel({ user, onBack }) {
   const [completions, setCompletions] = useState([]);
   const [graceRows, setGraceRows] = useState([]);
   const [attemptRows, setAttemptRows] = useState([]);
-  const [moduleRow, setModuleRow] = useState(null);
   const [videoUrlInput, setVideoUrlInput] = useState("");
   const [windowOpenInput, setWindowOpenInput] = useState(true);
   const [windowCloseInput, setWindowCloseInput] = useState("");
