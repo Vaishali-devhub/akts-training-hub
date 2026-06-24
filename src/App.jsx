@@ -499,6 +499,7 @@ function VideoScreen({ user, language, moduleData, onComplete }) {
   const [passed, setPassed] = useState([]);
   const [started, setStarted] = useState(false);
   const [playerReady, setPlayerReady] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(false);
   const playerRef = useRef(null);
   const intervalRef = useRef(null);
   const lang = LANGUAGES.find(l=>l.code===language);
@@ -511,10 +512,17 @@ function VideoScreen({ user, language, moduleData, onComplete }) {
       if (!mounted) return;
       playerRef.current = new YT.Player("yt-player-" + videoId, {
         videoId,
-        playerVars: { rel: 0, modestbranding: 1, playsinline: 1 },
+        playerVars: { rel: 0, modestbranding: 1, playsinline: 1, controls: 0, disablekb: 1, fs: 0 },
         events: {
           onReady: () => setPlayerReady(true),
-          onStateChange: (e) => { if (e.data === YT.PlayerState.ENDED) setProgress(100); },
+          onStateChange: (e) => {
+            if (e.data === YT.PlayerState.ENDED) {
+              setProgress(100);
+              if (intervalRef.current) clearInterval(intervalRef.current);
+            }
+            if (e.data === YT.PlayerState.PLAYING) setIsPlaying(true);
+            if (e.data === YT.PlayerState.PAUSED) setIsPlaying(false);
+          },
         },
       });
     });
@@ -525,7 +533,8 @@ function VideoScreen({ user, language, moduleData, onComplete }) {
     };
   }, [videoId]);
 
-  // Poll the REAL video position every half second
+  // Poll the REAL video position every half second — also guards against forward-skipping
+  const lastTimeRef = useRef(0);
   useEffect(() => {
     if (!started) return;
     intervalRef.current = setInterval(() => {
@@ -534,7 +543,16 @@ function VideoScreen({ user, language, moduleData, onComplete }) {
       const duration = player.getDuration();
       const current = player.getCurrentTime();
       if (!duration) return;
-      const pct = Math.min((current / duration) * 100, 100);
+
+      // Anti-skip: a real half-second tick should never advance by more than ~1.5s.
+      // A bigger jump means someone tried to seek forward — snap it back.
+      if (current - lastTimeRef.current > 1.5) {
+        player.seekTo(lastTimeRef.current, true);
+      } else {
+        lastTimeRef.current = current;
+      }
+
+      const pct = Math.min((lastTimeRef.current / duration) * 100, 100);
       setProgress(pct);
 
       const next = moduleData.checkpoints.find(cp => !passed.includes(cp.at) && pct >= cp.at);
@@ -549,6 +567,22 @@ function VideoScreen({ user, language, moduleData, onComplete }) {
   const handleStart = () => {
     setStarted(true);
     if (playerRef.current && playerRef.current.playVideo) playerRef.current.playVideo();
+  };
+
+  const togglePlayPause = () => {
+    const player = playerRef.current;
+    if (!player) return;
+    if (isPlaying) player.pauseVideo();
+    else player.playVideo();
+  };
+
+  const rewind10 = () => {
+    const player = playerRef.current;
+    if (!player || typeof player.getCurrentTime !== "function") return;
+    const t = player.getCurrentTime();
+    const target = Math.max(t - 10, 0);
+    player.seekTo(target, true);
+    lastTimeRef.current = target; // keep the anti-skip guard in sync with the intentional rewind
   };
 
   const handleCheckpointPass = (cp) => {
@@ -576,7 +610,7 @@ function VideoScreen({ user, language, moduleData, onComplete }) {
                 <div className="video-overlay">
                   <button className="play-btn" onClick={handleStart} disabled={!playerReady}>▶</button>
                   <div className="overlay-title">{playerReady ? "Ready to begin?" : "Loading video…"}</div>
-                  <div className="overlay-sub">{moduleData.checkpoints.length} checkpoint questions will appear during the video — it will pause automatically. Do not close this page.</div>
+                  <div className="overlay-sub">{moduleData.checkpoints.length} checkpoint questions will appear during the video — it will pause automatically. You can pause or rewind to re-watch, but you cannot skip ahead. Do not close this page.</div>
                 </div>
               )}
             </div>
@@ -585,6 +619,13 @@ function VideoScreen({ user, language, moduleData, onComplete }) {
               <span>Video Progress</span>
               <span style={{fontWeight:600,color:progress>=100?"var(--green)":"var(--ink)"}}>{Math.round(progress)}%</span>
             </div>
+            {started && progress<100 && !checkpoint && (
+              <div style={{display:"flex",gap:"8px",marginBottom:"14px"}}>
+                <button className="btn-outline" onClick={togglePlayPause}>{isPlaying ? "⏸ Pause" : "▶ Play"}</button>
+                <button className="btn-outline" onClick={rewind10}>⏪ Rewind 10s</button>
+                <span style={{fontSize:"11px",color:"var(--muted)",display:"flex",alignItems:"center",marginLeft:"4px"}}>Forward skipping is disabled — pause or rewind only</span>
+              </div>
+            )}
             <div style={{display:"flex",gap:"7px",flexWrap:"wrap"}}>
               {moduleData.checkpoints.map(cp=>(
                 <div key={cp.at} style={{fontSize:"12px",padding:"5px 12px",borderRadius:"100px",fontWeight:500,background:passed.includes(cp.at)?"#f0fdf4":"var(--bg)",color:passed.includes(cp.at)?"var(--green)":"var(--muted)",border:`1px solid ${passed.includes(cp.at)?"#bbf7d0":"var(--border)"}`}}>
