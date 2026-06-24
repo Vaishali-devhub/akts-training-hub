@@ -78,6 +78,23 @@ async function checkExistingCompletion(employeeId, moduleId) {
   return data;
 }
 
+async function checkAccessWindow(employeeId, mod) {
+  const now = new Date();
+  const withinMainWindow = !mod.windowClose || new Date(mod.windowClose) >= now;
+  if (withinMainWindow) return { allowed: true, viaGrace: false };
+
+  // Main window has closed — check if admin granted a 24-hour makeup window
+  const { data: grace } = await supabase
+    .from("grace_access")
+    .select("*")
+    .eq("employee_id", employeeId)
+    .eq("module_id", mod.id)
+    .maybeSingle();
+
+  if (grace && new Date(grace.expires_at) >= now) return { allowed: true, viaGrace: true };
+  return { allowed: false, viaGrace: false };
+}
+
 function formatDeadline(windowClose) {
   if (!windowClose) return "the end of this session";
   return new Date(windowClose).toLocaleDateString("en-US", { weekday: "long", day: "numeric", month: "long", year: "numeric" })
@@ -281,6 +298,17 @@ const css = `
   .loading-text { font-size: 13px; color: var(--muted); }
 
   .divider { height: 1px; background: var(--border); margin: 18px 0; }
+
+  .completion-bar-track { background: #e5e7eb; border-radius: 100px; height: 10px; width: 100%; overflow: hidden; margin-top: 8px; }
+  .completion-bar-fill { height: 100%; background: linear-gradient(90deg, var(--blue), #60a5fa); border-radius: 100px; transition: width 0.4s; }
+
+  @media print {
+    .no-print { display: none !important; }
+    body { background: #fff; }
+    .main-wide { max-width: 100%; padding: 0; }
+    .stat-card, .module-card { break-inside: avoid; }
+    table { font-size: 11px; }
+  }
 
   @media (max-width: 600px) {
     .main, .main-wide { padding: 18px 14px; }
@@ -585,6 +613,14 @@ function VideoScreen({ user, language, moduleData, onComplete }) {
     lastTimeRef.current = target; // keep the anti-skip guard in sync with the intentional rewind
   };
 
+  // Auto-advance to the quiz a couple seconds after the video genuinely finishes
+  useEffect(() => {
+    if (progress >= 100) {
+      const t = setTimeout(() => onComplete(), 2200);
+      return () => clearTimeout(t);
+    }
+  }, [progress]);
+
   const handleCheckpointPass = (cp) => {
     setPassed(p => [...p, cp.at]);
     setCheckpoint(null);
@@ -637,9 +673,9 @@ function VideoScreen({ user, language, moduleData, onComplete }) {
               <div style={{marginTop:"18px",padding:"16px 20px",background:"#f0fdf4",borderRadius:"12px",border:"1px solid #bbf7d0",display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:"12px"}}>
                 <div>
                   <div style={{fontWeight:700,color:"var(--green)",fontSize:"14px"}}>✓ Video Complete!</div>
-                  <div style={{fontSize:"13px",color:"var(--muted)",marginTop:"2px"}}>All checkpoints passed. Proceed to the quiz.</div>
+                  <div style={{fontSize:"13px",color:"var(--muted)",marginTop:"2px"}}>Taking you to the quiz automatically…</div>
                 </div>
-                <button className="btn-primary" style={{width:"auto",padding:"11px 22px"}} onClick={onComplete}>Take Quiz →</button>
+                <button className="btn-primary" style={{width:"auto",padding:"11px 22px"}} onClick={onComplete}>Take Quiz Now →</button>
               </div>
             )}
           </div>
@@ -650,7 +686,7 @@ function VideoScreen({ user, language, moduleData, onComplete }) {
   );
 }
 
-function QuizScreen({ user, language, moduleData, onComplete }) {
+function QuizScreen({ user, language, moduleData, onComplete, onRewatch }) {
   const [current, setCurrent] = useState(0);
   const [answers, setAnswers] = useState({});
   const [submitted, setSubmitted] = useState(false);
@@ -679,11 +715,16 @@ function QuizScreen({ user, language, moduleData, onComplete }) {
               <div className={`result-circle ${pass?"pass":"fail"}`}>{score}/{moduleData.quiz.length}<div style={{fontSize:"10px",fontWeight:700,marginTop:"3px"}}>{pass?"PASS":"FAIL"}</div></div>
               <h2 style={{fontSize:"20px",fontWeight:700,marginBottom:"8px",letterSpacing:"-0.3px"}}>{pass?"Well Done! 🎉":"Not Quite There"}</h2>
               <p style={{color:"var(--muted)",fontSize:"14px",lineHeight:1.7,marginBottom:"24px",maxWidth:"360px",margin:"0 auto 24px"}}>
-                {pass?`You scored ${score}/${moduleData.quiz.length}. Proceed to sign your attendance.`:`You scored ${score}/${moduleData.quiz.length}. Minimum ${passScore}/${moduleData.quiz.length} required. ${attempt<3?`${3-attempt} attempt(s) remaining.`:"All 3 attempts used. Your manager has been notified."}`}
+                {pass?`You scored ${score}/${moduleData.quiz.length}. Proceed to sign your attendance.`:`You scored ${score}/${moduleData.quiz.length}. Minimum ${passScore}/${moduleData.quiz.length} required. ${attempt<3?`${3-attempt} attempt(s) remaining.`:"You'll need to rewatch the video before trying again."}`}
               </p>
               {!pass&&attempt<3&&<button className="btn-outline" style={{marginBottom:"12px"}} onClick={()=>{setAttempt(a=>a+1);setAnswers({});setCurrent(0);setSubmitted(false);setScore(0);}}>🔄 Retry (Attempt {attempt+1}/3)</button>}
               {pass&&<button className="btn-primary" style={{maxWidth:"280px",margin:"0 auto"}} onClick={()=>onComplete(score)}>Complete & Sign Attendance →</button>}
-              {!pass&&attempt>=3&&<div style={{padding:"14px",background:"#fef2f2",borderRadius:"12px",color:"var(--red)",fontSize:"13px"}}>⚠ Maximum attempts reached. Please speak to your supervisor.</div>}
+              {!pass&&attempt>=3&&(
+                <>
+                  <div style={{padding:"14px",background:"#fef2f2",borderRadius:"12px",color:"var(--red)",fontSize:"13px",marginBottom:"14px"}}>⚠ 3 attempts used without reaching the required score.</div>
+                  <button className="btn-primary" style={{maxWidth:"280px",margin:"0 auto"}} onClick={onRewatch}>🔁 Rewatch Video & Try Again</button>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -808,7 +849,7 @@ function LockedScreen({ user, onLogout }) {
         <div style={{background:"#fff",borderRadius:"18px",padding:"48px 32px",border:"1px solid var(--border)"}}>
           <div className="locked-icon">🔐</div>
           <h2 style={{fontSize:"21px",fontWeight:700,marginBottom:"8px",letterSpacing:"-0.3px"}}>Training Window Closed</h2>
-          <p style={{color:"var(--muted)",fontSize:"14px",lineHeight:1.7}}>There is no active training session right now.<br/>You will be notified when the next one opens.</p>
+          <p style={{color:"var(--muted)",fontSize:"14px",lineHeight:1.7}}>There is no active training session available to you right now.<br/>If you missed this month's window, contact your AKTS HSE admin to request a 24-hour makeup access.</p>
         </div>
       </div>
     </>
@@ -819,35 +860,38 @@ function AdminPanel({ user, onBack }) {
   const [loading, setLoading] = useState(true);
   const [employees, setEmployees] = useState([]);
   const [completions, setCompletions] = useState([]);
+  const [graceRows, setGraceRows] = useState([]);
   const [moduleRow, setModuleRow] = useState(null);
   const [videoUrlInput, setVideoUrlInput] = useState("");
   const [windowOpenInput, setWindowOpenInput] = useState(true);
   const [windowCloseInput, setWindowCloseInput] = useState("");
   const [saveMsg, setSaveMsg] = useState("");
   const [saving, setSaving] = useState(false);
+  const [grantingId, setGrantingId] = useState(null);
 
-  useEffect(() => {
-    async function load() {
-      setLoading(true);
-      const mod = await fetchLatestModuleForAdmin();
-      setModuleRow(mod);
-      if (mod) {
-        setVideoUrlInput(mod.video_url || "");
-        setWindowOpenInput(mod.window_open);
-        setWindowCloseInput(mod.window_close ? mod.window_close.slice(0,16) : "");
-      }
-
-      const { data: emps } = await supabase.from("employees").select("id, login_id, e_no, plant, name, role").eq("role","employee").order("name");
-      setEmployees(emps || []);
-
-      if (mod) {
-        const { data: comps } = await supabase.from("completions").select("*").eq("module_id", mod.id);
-        setCompletions(comps || []);
-      }
-      setLoading(false);
+  async function loadAll() {
+    setLoading(true);
+    const mod = await fetchLatestModuleForAdmin();
+    setModuleRow(mod);
+    if (mod) {
+      setVideoUrlInput(mod.video_url || "");
+      setWindowOpenInput(mod.window_open);
+      setWindowCloseInput(mod.window_close ? mod.window_close.slice(0,16) : "");
     }
-    load();
-  }, []);
+
+    const { data: emps } = await supabase.from("employees").select("id, login_id, e_no, plant, name, role").eq("role","employee").order("name");
+    setEmployees(emps || []);
+
+    if (mod) {
+      const { data: comps } = await supabase.from("completions").select("*").eq("module_id", mod.id);
+      setCompletions(comps || []);
+      const { data: grace } = await supabase.from("grace_access").select("*").eq("module_id", mod.id);
+      setGraceRows(grace || []);
+    }
+    setLoading(false);
+  }
+
+  useEffect(() => { loadAll(); }, []);
 
   const handleSaveModule = async () => {
     if (!moduleRow) return;
@@ -861,18 +905,56 @@ function AdminPanel({ user, onBack }) {
     setSaveMsg(error ? "⚠ Something went wrong saving." : "✓ Saved! Changes are live immediately for employees.");
   };
 
+  const handleGrantAccess = async (employeeId) => {
+    if (!moduleRow) return;
+    setGrantingId(employeeId);
+    const expiresAt = new Date(Date.now() + 24*60*60*1000).toISOString();
+    await supabase.from("grace_access").upsert(
+      { employee_id: employeeId, module_id: moduleRow.id, expires_at: expiresAt },
+      { onConflict: "employee_id,module_id" }
+    );
+    const { data: grace } = await supabase.from("grace_access").select("*").eq("module_id", moduleRow.id);
+    setGraceRows(grace || []);
+    setGrantingId(null);
+  };
+
+  const handleExportCSV = () => {
+    const header = ["Employee","E-No","Plant","Status","Score","Language","Completed At"];
+    const rows = employees.map(emp => {
+      const c = completions.find(c=>c.employee_id===emp.id);
+      const lang = LANGUAGES.find(l=>l.code===c?.language);
+      return [
+        emp.name, emp.e_no, emp.plant,
+        c ? "Done" : "Pending",
+        c ? `${c.score}/10` : "",
+        c ? (lang?.label || c.language) : "",
+        c?.completed_at ? new Date(c.completed_at).toLocaleString("en-SG") : "",
+      ];
+    });
+    const csv = [header, ...rows].map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${moduleRow?.module_code || "training"}_completion_report.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   if (loading) return <LoadingScreen text="Loading dashboard…"/>;
 
   const completedIds = new Set(completions.map(c=>c.employee_id));
   const completed = employees.filter(e=>completedIds.has(e.id));
   const pending = employees.filter(e=>!completedIds.has(e.id));
   const avgScore = completions.length ? Math.round(completions.reduce((s,c)=>s+c.score,0)/completions.length*10) : 0;
+  const completionRate = employees.length ? Math.round((completed.length/employees.length)*100) : 0;
+  const now = new Date();
 
   return (
     <>
       <style>{css}</style>
       <div style={{minHeight:"100vh"}}>
-        <div className="topbar">
+        <div className="topbar no-print">
           <div className="topbar-left">
             <div className="topbar-logo"><LogoIcon size={32}/></div>
             <div className="topbar-name">AKTS Training Hub <span style={{color:"var(--blue)",fontSize:"10px",fontWeight:700,letterSpacing:"1px",textTransform:"uppercase",marginLeft:"8px"}}>Admin</span></div>
@@ -880,27 +962,42 @@ function AdminPanel({ user, onBack }) {
           <button className="sign-out-btn" onClick={onBack}>← Exit Admin</button>
         </div>
         <div className="main-wide">
-          <div style={{marginBottom:"24px"}}>
-            <div style={{fontSize:"24px",fontWeight:800,letterSpacing:"-0.3px",marginBottom:"3px"}}>Dashboard</div>
-            <div style={{fontSize:"13px",color:"var(--muted)"}}>{moduleRow?.title || "No active module"} {moduleRow ? `· Closes ${formatDeadline(moduleRow.window_close)}` : ""}</div>
+          <div style={{marginBottom:"24px",display:"flex",alignItems:"flex-start",justifyContent:"space-between",flexWrap:"wrap",gap:"12px"}}>
+            <div>
+              <div style={{fontSize:"24px",fontWeight:800,letterSpacing:"-0.3px",marginBottom:"3px"}}>Dashboard</div>
+              <div style={{fontSize:"13px",color:"var(--muted)"}}>{moduleRow?.title || "No active module"} {moduleRow ? `· Closes ${formatDeadline(moduleRow.window_close)}` : ""}</div>
+            </div>
+            <button className="btn-outline no-print" onClick={()=>window.print()}>🖨️ Print / Save as PDF Report</button>
           </div>
+
           <div className="admin-stats">
             <div className="stat-card"><div className="stat-num">{employees.length}</div><div className="stat-label">Total Employees</div></div>
             <div className="stat-card"><div className="stat-num green">{completed.length}</div><div className="stat-label">Completed</div></div>
             <div className="stat-card"><div className="stat-num red">{pending.length}</div><div className="stat-label">Pending</div></div>
             <div className="stat-card"><div className="stat-num blue">{avgScore}%</div><div className="stat-label">Avg. Score</div></div>
           </div>
+
+          <div className="stat-card" style={{marginBottom:"18px"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:"2px"}}>
+              <div className="stat-label">Overall Completion Rate</div>
+              <div style={{fontWeight:800,fontSize:"18px",color:"var(--blue)"}}>{completionRate}%</div>
+            </div>
+            <div className="completion-bar-track"><div className="completion-bar-fill" style={{width:`${completionRate}%`}}/></div>
+          </div>
+
           <div style={{background:"#fff",borderRadius:"18px",overflow:"hidden",border:"1px solid var(--border)",marginBottom:"18px"}}>
             <div style={{padding:"16px 22px",borderBottom:"1px solid var(--border)",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
               <div style={{fontWeight:700,fontSize:"15px"}}>Completion Report</div>
-              <div style={{fontSize:"12px",color:"var(--blue)",cursor:"pointer",fontWeight:600}}>Export CSV →</div>
+              <div className="no-print" style={{fontSize:"12px",color:"var(--blue)",cursor:"pointer",fontWeight:600}} onClick={handleExportCSV}>Export CSV →</div>
             </div>
             <table>
-              <thead><tr><th>Employee</th><th>Plant</th><th>Status</th><th>Score</th><th>Language</th><th>Completed At</th></tr></thead>
+              <thead><tr><th>Employee</th><th>Plant</th><th>Status</th><th>Score</th><th>Language</th><th>Completed At</th><th className="no-print">Action</th></tr></thead>
               <tbody>
                 {employees.map(emp=>{
                   const c = completions.find(c=>c.employee_id===emp.id);
                   const lang = LANGUAGES.find(l=>l.code===c?.language);
+                  const grace = graceRows.find(g=>g.employee_id===emp.id);
+                  const graceActive = grace && new Date(grace.expires_at) >= now;
                   return (
                     <tr key={emp.id}>
                       <td><strong>{emp.name}</strong><br/><span style={{fontSize:"11px",color:"var(--muted)"}}>{emp.e_no}</span></td>
@@ -909,13 +1006,21 @@ function AdminPanel({ user, onBack }) {
                       <td>{c?`${c.score}/10`:"—"}</td>
                       <td>{c?`${lang?.flag||""} ${lang?.label||c.language}`:"—"}</td>
                       <td style={{fontSize:"12px",color:"var(--muted)"}}>{c?.completed_at?new Date(c.completed_at).toLocaleString("en-SG",{dateStyle:"medium",timeStyle:"short"}):"—"}</td>
+                      <td className="no-print">
+                        {!c && (
+                          graceActive
+                            ? <span style={{fontSize:"11px",color:"var(--green)",fontWeight:600}}>Grace until {new Date(grace.expires_at).toLocaleString("en-SG",{dateStyle:"short",timeStyle:"short"})}</span>
+                            : <button className="btn-outline" style={{padding:"5px 11px",fontSize:"11px"}} disabled={grantingId===emp.id} onClick={()=>handleGrantAccess(emp.id)}>{grantingId===emp.id?"Granting…":"Grant 24h Access"}</button>
+                        )}
+                      </td>
                     </tr>
                   );
                 })}
               </tbody>
             </table>
           </div>
-          <div style={{background:"#fff",borderRadius:"18px",padding:"26px",border:"1px solid var(--border)"}}>
+
+          <div className="no-print" style={{background:"#fff",borderRadius:"18px",padding:"26px",border:"1px solid var(--border)"}}>
             <div style={{fontWeight:700,fontSize:"15px",marginBottom:"6px"}}>📤 Manage This Month's Training</div>
             <div style={{fontSize:"12px",color:"var(--muted)",marginBottom:"18px"}}>Update the video link or open/close the training window. Changes apply instantly — no redeploy needed.</div>
 
@@ -938,7 +1043,8 @@ function AdminPanel({ user, onBack }) {
             </div>
             <button className="btn-primary" style={{maxWidth:"200px"}} disabled={saving} onClick={handleSaveModule}>{saving?"Saving…":"Save Changes →"}</button>
             <div style={{marginTop:"16px",fontSize:"12px",color:"var(--muted)"}}>
-              ℹ️ To change quiz questions, contact your developer for now — a self-serve question editor is planned for a future update.
+              ℹ️ To change quiz questions, contact your developer for now — a self-serve question editor is planned for a future update.<br/>
+              ℹ️ Set "Window Closes" to 48 hours after you open it for the standard schedule. Use "Grant 24h Access" above for anyone who missed it.
             </div>
           </div>
         </div>
@@ -984,6 +1090,13 @@ export default function App() {
       return;
     }
 
+    const access = await checkAccessWindow(employee.id, mod);
+    if (!access.allowed) {
+      setScreen("locked");
+      setAppLoading(false);
+      return;
+    }
+
     setScreen("language");
     setAppLoading(false);
   };
@@ -999,7 +1112,7 @@ export default function App() {
   if (screen==="done") return <AlreadyDoneScreen user={user} completion={completion} moduleData={moduleData} onLogout={handleLogout}/>;
   if (screen==="language") return <LanguageScreen user={user} onSelect={l=>{setLanguage(l);setScreen("video");}}/>;
   if (screen==="video") return <VideoScreen user={user} language={language} moduleData={moduleData} onComplete={()=>setScreen("quiz")}/>;
-  if (screen==="quiz") return <QuizScreen user={user} language={language} moduleData={moduleData} onComplete={s=>{setQuizScore(s);setScreen("ack");}}/>;
+  if (screen==="quiz") return <QuizScreen user={user} language={language} moduleData={moduleData} onComplete={s=>{setQuizScore(s);setScreen("ack");}} onRewatch={()=>setScreen("video")}/>;
   if (screen==="ack") return <AcknowledgementScreen user={user} score={quizScore} language={language} moduleData={moduleData} onDone={()=>setScreen("done")}/>;
   return null;
 }
