@@ -366,14 +366,29 @@ const css = `
   }
 
   @media (max-width: 600px) {
-    .main, .main-wide { padding: 18px 14px; }
-    .topbar { padding: 0 14px; }
-    .module-card { padding: 18px; }
-    .module-title { font-size: 19px; }
-    .lang-card, .login-card { padding: 26px 22px; }
+    .main, .main-wide { padding: 16px 12px; }
+    .topbar { padding: 0 12px; }
+    .topbar-name { font-size: 12.5px; }
+    .module-card { padding: 16px; }
+    .module-title { font-size: 18px; }
+    .lang-card, .login-card { padding: 24px 18px; }
+    .login-brandrow-icon { width: 50px; height: 50px; }
+    .login-brandrow-name { font-size: 19px; }
     .admin-stats { grid-template-columns: 1fr 1fr; }
     .steps { flex-direction: column; }
-    th:nth-child(n+5), td:nth-child(n+5) { display: none; }
+    table { font-size: 12px; }
+    th, td { padding: 9px 10px; }
+    .video-controls-row { flex-direction: column; align-items: stretch !important; }
+    .video-controls-note { display: none; }
+    .quiz-header { flex-direction: column; align-items: flex-start; }
+    .result-circle { width: 90px; height: 90px; font-size: 22px; }
+  }
+
+  @media (max-width: 420px) {
+    .topbar-user-hide-xs { display: none; }
+    .login-brandrow-name { font-size: 17px; }
+    .splash-title { font-size: 21px; }
+    .splash-logo { width: 85px; }
   }
 `;
 
@@ -420,7 +435,7 @@ function TopBar({ user, onLogout, onAdmin }) {
       </div>
       <div className="topbar-right">
         {user?.role === "admin" && <button className="btn-dark" style={{padding:"5px 13px",fontSize:"12px"}} onClick={onAdmin}>Admin Panel</button>}
-        <span style={{fontSize:"13px",color:"var(--muted)"}}>{user?.name}</span>
+        <span className="topbar-user-hide-xs" style={{fontSize:"13px",color:"var(--muted)"}}>{user?.name}</span>
         <div className="avatar">{user?.name?.split(" ").map(w=>w[0]).join("").slice(0,2)}</div>
         <button className="sign-out-btn" onClick={onLogout}>Sign Out</button>
       </div>
@@ -728,10 +743,10 @@ function VideoScreen({ user, language, moduleData, onComplete }) {
               <span style={{fontWeight:600,color:progress>=100?"var(--green)":"var(--ink)"}}>{Math.round(progress)}%</span>
             </div>
             {started && progress<100 && !checkpoint && (
-              <div style={{display:"flex",gap:"8px",marginBottom:"14px"}}>
+              <div className="video-controls-row" style={{display:"flex",gap:"8px",marginBottom:"14px",alignItems:"center",flexWrap:"wrap"}}>
                 <button className="btn-outline" onClick={togglePlayPause}>{isPlaying ? "⏸ Pause" : "▶ Play"}</button>
                 <button className="btn-outline" onClick={rewind10}>⏪ Rewind 10s</button>
-                <span style={{fontSize:"11px",color:"var(--muted)",display:"flex",alignItems:"center",marginLeft:"4px"}}>Forward skipping is disabled — pause or rewind only</span>
+                <span className="video-controls-note" style={{fontSize:"11px",color:"var(--muted)",display:"flex",alignItems:"center",marginLeft:"4px"}}>Forward skipping is disabled — pause or rewind only</span>
               </div>
             )}
             <div style={{display:"flex",gap:"7px",flexWrap:"wrap"}}>
@@ -1193,6 +1208,7 @@ function AdminPanel({ user, onBack }) {
               <div style={{fontWeight:700,fontSize:"15px"}}>Completion Report</div>
               <div className="no-print" style={{fontSize:"12px",color:"var(--blue)",cursor:"pointer",fontWeight:600}} onClick={handleExportCSV}>Export CSV →</div>
             </div>
+            <div style={{overflowX:"auto"}}>
             <table>
               <thead><tr><th>Employee</th><th>Plant</th><th>Status</th><th>Score</th><th>Language</th><th>Completed At</th><th className="no-print">Action</th></tr></thead>
               <tbody>
@@ -1229,6 +1245,7 @@ function AdminPanel({ user, onBack }) {
                 })}
               </tbody>
             </table>
+            </div>
           </div>
 
           {isLatestModule && (
