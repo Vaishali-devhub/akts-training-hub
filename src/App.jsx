@@ -302,6 +302,29 @@ const css = `
   .completion-bar-track { background: #e5e7eb; border-radius: 100px; height: 10px; width: 100%; overflow: hidden; margin-top: 8px; }
   .completion-bar-fill { height: 100%; background: linear-gradient(90deg, var(--blue), #60a5fa); border-radius: 100px; transition: width 0.4s; }
 
+  .video-fullscreen-wrap:fullscreen,
+  .video-fullscreen-wrap:-webkit-full-screen {
+    background: #000;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 20px;
+  }
+  .video-fullscreen-wrap:fullscreen .video-wrap,
+  .video-fullscreen-wrap:-webkit-full-screen .video-wrap {
+    max-height: 78vh;
+    margin-bottom: 16px;
+  }
+  .video-fullscreen-wrap:fullscreen .video-controls-row,
+  .video-fullscreen-wrap:-webkit-full-screen .video-controls-row {
+    justify-content: center;
+  }
+  .video-fullscreen-wrap:fullscreen .progress-track,
+  .video-fullscreen-wrap:-webkit-full-screen .progress-track {
+    max-width: 600px;
+    margin: 0 auto 6px;
+  }
+
   @media print {
     .no-print { display: none !important; }
     body { background: #fff; }
@@ -617,8 +640,33 @@ function VideoScreen({ user, language, moduleData, onComplete }) {
   const [isPlaying, setIsPlaying] = useState(false);
   const playerRef = useRef(null);
   const intervalRef = useRef(null);
+  const fsWrapRef = useRef(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const lang = LANGUAGES.find(l=>l.code===language);
   const videoId = extractVideoId(moduleData.videoUrl);
+
+  useEffect(() => {
+    const handler = () => setIsFullscreen(!!(document.fullscreenElement || document.webkitFullscreenElement));
+    document.addEventListener("fullscreenchange", handler);
+    document.addEventListener("webkitfullscreenchange", handler);
+    return () => {
+      document.removeEventListener("fullscreenchange", handler);
+      document.removeEventListener("webkitfullscreenchange", handler);
+    };
+  }, []);
+
+  const toggleFullscreen = () => {
+    const el = fsWrapRef.current;
+    if (!el) return;
+    const isFs = document.fullscreenElement || document.webkitFullscreenElement;
+    if (!isFs) {
+      if (el.requestFullscreen) el.requestFullscreen();
+      else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+    } else {
+      if (document.exitFullscreen) document.exitFullscreen();
+      else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+    }
+  };
 
   // Load the real YouTube player once
   useEffect(() => {
@@ -727,6 +775,7 @@ function VideoScreen({ user, language, moduleData, onComplete }) {
             <StepIndicator current={2}/>
           </div>
           <div style={{background:"#fff",borderRadius:"18px",padding:"26px",border:"1px solid var(--border)"}}>
+            <div className="video-fullscreen-wrap" ref={fsWrapRef}>
             <div className="video-wrap">
               <div id={"yt-player-" + videoId} style={{width:"100%",height:"100%"}}/>
               {!started && (
@@ -738,17 +787,20 @@ function VideoScreen({ user, language, moduleData, onComplete }) {
               )}
             </div>
             <div className="progress-track" style={{marginBottom:"6px"}}><div className="progress-fill" style={{width:`${progress}%`}}/></div>
-            <div style={{display:"flex",justifyContent:"space-between",fontSize:"12px",color:"var(--muted)",marginBottom:"14px"}}>
+            <div style={{display:"flex",justifyContent:"space-between",fontSize:"12px",color:isFullscreen?"rgba(255,255,255,0.6)":"var(--muted)",marginBottom:"14px"}}>
               <span>Video Progress</span>
-              <span style={{fontWeight:600,color:progress>=100?"var(--green)":"var(--ink)"}}>{Math.round(progress)}%</span>
+              <span style={{fontWeight:600,color:progress>=100?"var(--green)":isFullscreen?"#fff":"var(--ink)"}}>{Math.round(progress)}%</span>
             </div>
             {started && progress<100 && !checkpoint && (
               <div className="video-controls-row" style={{display:"flex",gap:"8px",marginBottom:"14px",alignItems:"center",flexWrap:"wrap"}}>
                 <button className="btn-outline" onClick={togglePlayPause}>{isPlaying ? "⏸ Pause" : "▶ Play"}</button>
                 <button className="btn-outline" onClick={rewind10}>⏪ Rewind 10s</button>
+                <button className="btn-outline" onClick={toggleFullscreen}>{isFullscreen ? "⤓ Exit Fullscreen" : "⛶ Fullscreen"}</button>
                 <span className="video-controls-note" style={{fontSize:"11px",color:"var(--muted)",display:"flex",alignItems:"center",marginLeft:"4px"}}>Forward skipping is disabled — pause or rewind only</span>
               </div>
             )}
+            {checkpoint && <CheckpointModal checkpoint={checkpoint} onPass={()=>handleCheckpointPass(checkpoint)}/>}
+            </div>
             <div style={{display:"flex",gap:"7px",flexWrap:"wrap"}}>
               {moduleData.checkpoints.map(cp=>(
                 <div key={cp.at} style={{fontSize:"12px",padding:"5px 12px",borderRadius:"100px",fontWeight:500,background:passed.includes(cp.at)?"#f0fdf4":"var(--bg)",color:passed.includes(cp.at)?"var(--green)":"var(--muted)",border:`1px solid ${passed.includes(cp.at)?"#bbf7d0":"var(--border)"}`}}>
@@ -768,7 +820,6 @@ function VideoScreen({ user, language, moduleData, onComplete }) {
           </div>
         </div>
       </div>
-      {checkpoint && <CheckpointModal checkpoint={checkpoint} onPass={()=>handleCheckpointPass(checkpoint)}/>}
     </>
   );
 }
