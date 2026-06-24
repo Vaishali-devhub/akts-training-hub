@@ -150,9 +150,9 @@ const css = `
   h1,h2,h3,h4 { font-family: 'Inter', sans-serif; }
 
   .login-page { min-height: 100vh; background: var(--bg); display: flex; flex-direction: column; align-items: center; padding: 56px 20px 40px; }
-  .login-brandrow { display: flex; align-items: center; gap: 10px; margin-bottom: 36px; }
-  .login-brandrow-icon { width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; }
-  .login-brandrow-name { font-weight: 700; font-size: 16px; color: var(--ink); letter-spacing: -0.2px; }
+  .login-brandrow { display: flex; align-items: center; gap: 14px; margin-bottom: 36px; }
+  .login-brandrow-icon { width: 64px; height: 64px; display: flex; align-items: center; justify-content: center; }
+  .login-brandrow-name { font-weight: 800; font-size: 24px; color: var(--ink); letter-spacing: -0.3px; }
 
   .login-card { background: var(--surface); border-radius: var(--radius-lg); padding: 40px; width: 100%; max-width: 400px; box-shadow: 0 1px 2px rgba(0,0,0,0.04), 0 8px 24px rgba(0,0,0,0.06); border: 1px solid var(--border); }
   .login-card-title { font-size: 22px; font-weight: 700; color: var(--ink); margin-bottom: 4px; letter-spacing: -0.3px; text-align: center; }
@@ -310,6 +310,61 @@ const css = `
     table { font-size: 11px; }
   }
 
+  .splash-screen {
+    min-height: 100vh;
+    background: var(--ink);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 22px;
+    position: relative;
+    overflow: hidden;
+  }
+  .splash-screen::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse at 50% 50%, rgba(37,99,235,0.12) 0%, transparent 65%);
+    pointer-events: none;
+  }
+  .splash-logo {
+    width: 110px;
+    height: auto;
+    opacity: 0;
+    position: relative;
+    z-index: 1;
+    animation: splashLogoIn 0.9s cubic-bezier(0.34,1.56,0.64,1) forwards;
+  }
+  .splash-title {
+    font-size: 26px;
+    font-weight: 800;
+    color: #fff;
+    letter-spacing: -0.4px;
+    opacity: 0;
+    position: relative;
+    z-index: 1;
+    animation: splashTitleIn 0.7s ease forwards;
+    animation-delay: 0.5s;
+  }
+  .splash-sub {
+    font-size: 13px;
+    color: rgba(255,255,255,0.4);
+    opacity: 0;
+    position: relative;
+    z-index: 1;
+    animation: splashTitleIn 0.7s ease forwards;
+    animation-delay: 0.75s;
+  }
+  @keyframes splashLogoIn {
+    0% { opacity: 0; transform: scale(0.6) translateY(14px); }
+    100% { opacity: 1; transform: scale(1) translateY(0); }
+  }
+  @keyframes splashTitleIn {
+    0% { opacity: 0; transform: translateY(8px); }
+    100% { opacity: 1; transform: translateY(0); }
+  }
+
   @media (max-width: 600px) {
     .main, .main-wide { padding: 18px 14px; }
     .topbar { padding: 0 14px; }
@@ -334,6 +389,23 @@ function LoadingScreen({ text = "Loading…" }) {
       <div className="loading-screen">
         <div className="spinner"/>
         <div className="loading-text">{text}</div>
+      </div>
+    </>
+  );
+}
+
+function SplashScreen({ onDone }) {
+  useEffect(() => {
+    const t = setTimeout(onDone, 2400);
+    return () => clearTimeout(t);
+  }, []);
+  return (
+    <>
+      <style>{css}</style>
+      <div className="splash-screen">
+        <img src={LOGO_DATA_URI} alt="AKTS" className="splash-logo"/>
+        <div className="splash-title">AKTS Training Hub</div>
+        <div className="splash-sub">Learning Management Portal</div>
       </div>
     </>
   );
@@ -402,7 +474,7 @@ function LoginScreen({ onLogin }) {
       <style>{css}</style>
       <div className="login-page">
         <div className="login-brandrow">
-          <div className="login-brandrow-icon"><LogoIcon size={40}/></div>
+          <div className="login-brandrow-icon"><LogoIcon size={60}/></div>
           <div className="login-brandrow-name">AKTS Training Hub</div>
         </div>
 
@@ -869,6 +941,17 @@ function AdminPanel({ user, onBack }) {
   const [saving, setSaving] = useState(false);
   const [grantingId, setGrantingId] = useState(null);
 
+  const [quizDraft, setQuizDraft] = useState([]);
+  const [checkpointDraft, setCheckpointDraft] = useState([]);
+  const [quizSaving, setQuizSaving] = useState(false);
+  const [quizSaveMsg, setQuizSaveMsg] = useState("");
+
+  const [showNewMonth, setShowNewMonth] = useState(false);
+  const [newTitle, setNewTitle] = useState("");
+  const [newVideoUrl, setNewVideoUrl] = useState("");
+  const [newWindowClose, setNewWindowClose] = useState("");
+  const [creatingMonth, setCreatingMonth] = useState(false);
+
   async function loadAll() {
     setLoading(true);
     const mod = await fetchLatestModuleForAdmin();
@@ -887,6 +970,12 @@ function AdminPanel({ user, onBack }) {
       setCompletions(comps || []);
       const { data: grace } = await supabase.from("grace_access").select("*").eq("module_id", mod.id);
       setGraceRows(grace || []);
+
+      const { data: quizRows } = await supabase.from("quiz_questions").select("*").eq("module_id", mod.id).order("order_index");
+      setQuizDraft((quizRows||[]).map(q => ({ id:q.id, question_text:q.question_text, options:[q.option_a,q.option_b,q.option_c,q.option_d], correct_answer:q.correct_answer })));
+
+      const { data: cpRows } = await supabase.from("checkpoint_questions").select("*").eq("module_id", mod.id).order("order_index");
+      setCheckpointDraft((cpRows||[]).map(c => ({ id:c.id, at_percent:c.at_percent, question_text:c.question_text, options:[c.option_a,c.option_b,c.option_c,c.option_d], correct_answer:c.correct_answer })));
     }
     setLoading(false);
   }
@@ -916,6 +1005,75 @@ function AdminPanel({ user, onBack }) {
     const { data: grace } = await supabase.from("grace_access").select("*").eq("module_id", moduleRow.id);
     setGraceRows(grace || []);
     setGrantingId(null);
+  };
+
+  // ── Quiz / Checkpoint editor helpers ──
+  const addQuizQ = () => setQuizDraft(d => [...d, { question_text:"", options:["","","",""], correct_answer:0 }]);
+  const removeQuizQ = (i) => setQuizDraft(d => d.filter((_,idx)=>idx!==i));
+  const updateQuizQ = (i, field, value) => setQuizDraft(d => d.map((q,idx)=> idx!==i ? q : { ...q, [field]: value }));
+  const updateQuizOpt = (i, optIdx, value) => setQuizDraft(d => d.map((q,idx)=> idx!==i ? q : { ...q, options: q.options.map((o,oi)=>oi===optIdx?value:o) }));
+
+  const addCheckpointQ = () => setCheckpointDraft(d => [...d, { at_percent:50, question_text:"", options:["","","",""], correct_answer:0 }]);
+  const removeCheckpointQ = (i) => setCheckpointDraft(d => d.filter((_,idx)=>idx!==i));
+  const updateCheckpointQ = (i, field, value) => setCheckpointDraft(d => d.map((c,idx)=> idx!==i ? c : { ...c, [field]: value }));
+  const updateCheckpointOpt = (i, optIdx, value) => setCheckpointDraft(d => d.map((c,idx)=> idx!==i ? c : { ...c, options: c.options.map((o,oi)=>oi===optIdx?value:o) }));
+
+  const handleSaveQuiz = async () => {
+    if (!moduleRow) return;
+    setQuizSaving(true); setQuizSaveMsg("");
+
+    const cleanQuiz = quizDraft.filter(q => q.question_text.trim() && q.options.every(o=>o.trim()));
+    const cleanCheckpoints = checkpointDraft.filter(c => c.question_text.trim() && c.options.every(o=>o.trim()));
+
+    await supabase.from("quiz_questions").delete().eq("module_id", moduleRow.id);
+    await supabase.from("checkpoint_questions").delete().eq("module_id", moduleRow.id);
+
+    if (cleanQuiz.length) {
+      await supabase.from("quiz_questions").insert(cleanQuiz.map((q,i)=>({
+        module_id: moduleRow.id, question_text:q.question_text,
+        option_a:q.options[0], option_b:q.options[1], option_c:q.options[2], option_d:q.options[3],
+        correct_answer:q.correct_answer, order_index:i+1,
+      })));
+    }
+    if (cleanCheckpoints.length) {
+      await supabase.from("checkpoint_questions").insert(cleanCheckpoints.map((c,i)=>({
+        module_id: moduleRow.id, at_percent:c.at_percent, question_text:c.question_text,
+        option_a:c.options[0], option_b:c.options[1], option_c:c.options[2], option_d:c.options[3],
+        correct_answer:c.correct_answer, order_index:i+1,
+      })));
+    }
+
+    setQuizSaving(false);
+    setQuizSaveMsg(`✓ Saved! ${cleanQuiz.length} quiz questions, ${cleanCheckpoints.length} checkpoints — live immediately.`);
+    loadAll();
+  };
+
+  const handleCreateNewMonth = async () => {
+    if (!newTitle.trim() || !newVideoUrl.trim()) { setSaveMsg("⚠ Please enter a title and video URL for the new month."); return; }
+    setCreatingMonth(true);
+    const now = new Date();
+    const moduleCode = `INT-${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}-${now.getTime()}`;
+
+    // Close out any previously open modules so there's no ambiguity
+    await supabase.from("training_modules").update({ window_open: false }).eq("window_open", true);
+
+    const { data: inserted, error } = await supabase.from("training_modules").insert({
+      module_code: moduleCode,
+      title: newTitle,
+      month_label: now.toLocaleDateString("en-US",{month:"long",year:"numeric"}),
+      video_url: newVideoUrl,
+      window_open: true,
+      window_close: newWindowClose ? new Date(newWindowClose).toISOString() : null,
+      pass_score: 7,
+    }).select().single();
+
+    setCreatingMonth(false);
+    if (error) { setSaveMsg("⚠ Couldn't create new month — try again."); return; }
+
+    setShowNewMonth(false);
+    setNewTitle(""); setNewVideoUrl(""); setNewWindowClose("");
+    setSaveMsg("✓ New training module created! Add your quiz questions below, then employees can start.");
+    await loadAll();
   };
 
   const handleExportCSV = () => {
@@ -1043,9 +1201,81 @@ function AdminPanel({ user, onBack }) {
             </div>
             <button className="btn-primary" style={{maxWidth:"200px"}} disabled={saving} onClick={handleSaveModule}>{saving?"Saving…":"Save Changes →"}</button>
             <div style={{marginTop:"16px",fontSize:"12px",color:"var(--muted)"}}>
-              ℹ️ To change quiz questions, contact your developer for now — a self-serve question editor is planned for a future update.<br/>
               ℹ️ Set "Window Closes" to 48 hours after you open it for the standard schedule. Use "Grant 24h Access" above for anyone who missed it.
             </div>
+          </div>
+
+          <div className="no-print" style={{background:"#fff",borderRadius:"18px",padding:"26px",border:"1px solid var(--border)",marginTop:"18px"}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:showNewMonth?"18px":"0"}}>
+              <div>
+                <div style={{fontWeight:700,fontSize:"15px"}}>🗓️ Start a New Month</div>
+                <div style={{fontSize:"12px",color:"var(--muted)",marginTop:"4px"}}>Creates a fresh training module so you can move on from this one entirely.</div>
+              </div>
+              <button className="btn-outline" onClick={()=>setShowNewMonth(s=>!s)}>{showNewMonth?"Cancel":"+ New Month"}</button>
+            </div>
+            {showNewMonth && (
+              <div style={{marginTop:"6px"}}>
+                <label className="form-label-light">Training Title</label>
+                <input className="form-input-light" placeholder="e.g. August 2026 Internal Training" value={newTitle} onChange={e=>setNewTitle(e.target.value)}/>
+                <label className="form-label-light">Training Video URL (YouTube embed link)</label>
+                <input className="form-input-light" placeholder="https://www.youtube.com/embed/VIDEO_ID" value={newVideoUrl} onChange={e=>setNewVideoUrl(e.target.value)}/>
+                <label className="form-label-light">Window Closes (set ~48 hours from when you'll open it)</label>
+                <input type="datetime-local" className="form-input-light" value={newWindowClose} onChange={e=>setNewWindowClose(e.target.value)}/>
+                <button className="btn-primary" style={{maxWidth:"220px"}} disabled={creatingMonth} onClick={handleCreateNewMonth}>{creatingMonth?"Creating…":"Create New Month →"}</button>
+                <div style={{marginTop:"12px",fontSize:"12px",color:"var(--muted)"}}>After creating, scroll down to add this month's quiz and checkpoint questions.</div>
+              </div>
+            )}
+          </div>
+
+          <div className="no-print" style={{background:"#fff",borderRadius:"18px",padding:"26px",border:"1px solid var(--border)",marginTop:"18px"}}>
+            <div style={{fontWeight:700,fontSize:"15px",marginBottom:"6px"}}>🎯 Mid-Video Checkpoint Questions</div>
+            <div style={{fontSize:"12px",color:"var(--muted)",marginBottom:"18px"}}>These pop up and pause the video at the % mark you set. Mark which option is correct.</div>
+
+            {checkpointDraft.map((cp, i) => (
+              <div key={i} style={{border:"1.5px solid var(--border)",borderRadius:"12px",padding:"16px",marginBottom:"14px",position:"relative"}}>
+                <button onClick={()=>removeCheckpointQ(i)} style={{position:"absolute",top:"12px",right:"12px",background:"none",border:"none",color:"var(--red)",cursor:"pointer",fontSize:"13px"}}>✕ Remove</button>
+                <div style={{display:"flex",gap:"10px",alignItems:"flex-start",marginBottom:"10px"}}>
+                  <div style={{width:"110px",flexShrink:0}}>
+                    <label className="form-label-light">At % of video</label>
+                    <input type="number" min="1" max="99" className="form-input-light" style={{marginBottom:0}} value={cp.at_percent} onChange={e=>updateCheckpointQ(i,"at_percent",Number(e.target.value))}/>
+                  </div>
+                  <div style={{flex:1}}>
+                    <label className="form-label-light">Question</label>
+                    <input className="form-input-light" style={{marginBottom:0}} value={cp.question_text} onChange={e=>updateCheckpointQ(i,"question_text",e.target.value)}/>
+                  </div>
+                </div>
+                {cp.options.map((opt,oi)=>(
+                  <div key={oi} style={{display:"flex",alignItems:"center",gap:"8px",marginBottom:"6px"}}>
+                    <input type="radio" name={`cp-correct-${i}`} checked={cp.correct_answer===oi} onChange={()=>updateCheckpointQ(i,"correct_answer",oi)} style={{accentColor:"var(--blue)"}}/>
+                    <input className="form-input-light" style={{marginBottom:0}} placeholder={`Option ${["A","B","C","D"][oi]}`} value={opt} onChange={e=>updateCheckpointOpt(i,oi,e.target.value)}/>
+                  </div>
+                ))}
+              </div>
+            ))}
+            <button className="btn-outline" onClick={addCheckpointQ} style={{marginBottom:"22px"}}>+ Add Checkpoint</button>
+
+            <div className="divider"/>
+
+            <div style={{fontWeight:700,fontSize:"15px",marginBottom:"6px"}}>📝 Final Quiz Questions</div>
+            <div style={{fontSize:"12px",color:"var(--muted)",marginBottom:"18px"}}>Aim for 10. Mark which option is correct for each.</div>
+
+            {quizDraft.map((q, i) => (
+              <div key={i} style={{border:"1.5px solid var(--border)",borderRadius:"12px",padding:"16px",marginBottom:"14px",position:"relative"}}>
+                <button onClick={()=>removeQuizQ(i)} style={{position:"absolute",top:"12px",right:"12px",background:"none",border:"none",color:"var(--red)",cursor:"pointer",fontSize:"13px"}}>✕ Remove</button>
+                <label className="form-label-light">Question {i+1}</label>
+                <input className="form-input-light" value={q.question_text} onChange={e=>updateQuizQ(i,"question_text",e.target.value)}/>
+                {q.options.map((opt,oi)=>(
+                  <div key={oi} style={{display:"flex",alignItems:"center",gap:"8px",marginBottom:"6px"}}>
+                    <input type="radio" name={`quiz-correct-${i}`} checked={q.correct_answer===oi} onChange={()=>updateQuizQ(i,"correct_answer",oi)} style={{accentColor:"var(--blue)"}}/>
+                    <input className="form-input-light" style={{marginBottom:0}} placeholder={`Option ${["A","B","C","D"][oi]}`} value={opt} onChange={e=>updateQuizOpt(i,oi,e.target.value)}/>
+                  </div>
+                ))}
+              </div>
+            ))}
+            <button className="btn-outline" onClick={addQuizQ} style={{marginBottom:"18px"}}>+ Add Quiz Question</button>
+
+            {quizSaveMsg && <div className={quizSaveMsg.startsWith("✓")?"success-box":"error-box"}>{quizSaveMsg}</div>}
+            <button className="btn-primary" style={{maxWidth:"260px"}} disabled={quizSaving} onClick={handleSaveQuiz}>{quizSaving?"Saving…":"Save Quiz & Checkpoints →"}</button>
           </div>
         </div>
       </div>
@@ -1056,7 +1286,7 @@ function AdminPanel({ user, onBack }) {
 // ─── APP ─────────────────────────────────────────────────────────────────────
 export default function App() {
   const [user, setUser] = useState(null);
-  const [screen, setScreen] = useState("login");
+  const [screen, setScreen] = useState("splash");
   const [language, setLanguage] = useState(null);
   const [quizScore, setQuizScore] = useState(0);
   const [moduleData, setModuleData] = useState(null);
@@ -1106,6 +1336,7 @@ export default function App() {
   };
 
   if (appLoading) return <LoadingScreen text="Checking your training status…"/>;
+  if (screen==="splash") return <SplashScreen onDone={()=>setScreen("login")}/>;
   if (screen==="login") return <LoginScreen onLogin={handleLogin}/>;
   if (screen==="locked") return <LockedScreen user={user} onLogout={handleLogout}/>;
   if (screen==="admin") return <AdminPanel user={user} onBack={handleLogout}/>;
