@@ -20,6 +20,37 @@ const LANGUAGES = [
   { code: "bangla",    label: "Bangla",     native: "বাংলা",           flag: "🇧🇩" },
 ];
 
+const ADMIN_NOTIFY_EMAIL = "prem.pkveera@gmail.com";
+
+async function notifyAdmin(subject, html) {
+  try {
+    await supabase.functions.invoke("notify", { body: { to: ADMIN_NOTIFY_EMAIL, subject, html } });
+  } catch (e) {
+    console.error("Notify failed:", e);
+  }
+}
+
+async function checkAndNotifyMilestones(moduleId, moduleTitle) {
+  const { count: totalEmployees } = await supabase.from("employees").select("*", { count: "exact", head: true }).eq("role", "employee");
+  const { count: totalCompletions } = await supabase.from("completions").select("*", { count: "exact", head: true }).eq("module_id", moduleId);
+  if (!totalEmployees) return;
+  const pct = Math.round((totalCompletions / totalEmployees) * 100);
+
+  for (const milestone of [50, 75, 100]) {
+    if (pct >= milestone) {
+      const { error } = await supabase.from("module_milestones").insert({ module_id: moduleId, milestone });
+      if (!error) {
+        await notifyAdmin(
+          `${moduleTitle} — ${milestone}% Completion Reached`,
+          `<p><strong>${moduleTitle}</strong> has reached <strong>${milestone}%</strong> completion.</p>
+           <p>${totalCompletions} of ${totalEmployees} employees have completed training.</p>
+           <p>View the full dashboard at your AKTS Training Hub admin panel.</p>`
+        );
+      }
+    }
+  }
+}
+
 // ─── DATA HELPERS ─────────────────────────────────────────────────────────────
 async function fetchActiveModule() {
   const { data: modules } = await supabase
@@ -919,6 +950,7 @@ function AcknowledgementScreen({ user, score, language, moduleData, onDone }) {
       { employee_id: user.id, module_id: moduleData.id, score, language },
       { onConflict: "employee_id,module_id" }
     );
+    checkAndNotifyMilestones(moduleData.id, moduleData.title); // fire-and-forget, doesn't block UI
     setSigned(true);
     setSaving(false);
     setTimeout(onDone, 400);
@@ -982,7 +1014,26 @@ function AlreadyDoneScreen({ user, completion, moduleData, onLogout }) {
   );
 }
 
-function LockedScreen({ user, onLogout }) {
+function LockedScreen({ user, moduleData, onLogout }) {
+  const [requesting, setRequesting] = useState(false);
+  const [requested, setRequested] = useState(false);
+
+  const handleRequest = async () => {
+    if (!moduleData) return;
+    setRequesting(true);
+    await supabase.from("access_requests").upsert(
+      { employee_id: user.id, module_id: moduleData.id, status: "pending" },
+      { onConflict: "employee_id,module_id" }
+    );
+    await notifyAdmin(
+      `Access Request — ${user.name}`,
+      `<p><strong>${user.name}</strong> (${user.e_no}, ${user.plant}) missed the training window for <strong>${moduleData.title}</strong> and is requesting 24-hour makeup access.</p>
+       <p>Open your Admin Panel to grant access.</p>`
+    );
+    setRequesting(false);
+    setRequested(true);
+  };
+
   return (
     <>
       <style>{css}</style>
@@ -991,7 +1042,12 @@ function LockedScreen({ user, onLogout }) {
         <div style={{background:"#fff",borderRadius:"18px",padding:"48px 32px",border:"1px solid var(--border)"}}>
           <div className="locked-icon">🔐</div>
           <h2 style={{fontSize:"21px",fontWeight:700,marginBottom:"8px",letterSpacing:"-0.3px"}}>Training Window Closed</h2>
-          <p style={{color:"var(--muted)",fontSize:"14px",lineHeight:1.7}}>There is no active training session available to you right now.<br/>If you missed this month's window, contact your AKTS HSE admin to request a 24-hour makeup access.</p>
+          <p style={{color:"var(--muted)",fontSize:"14px",lineHeight:1.7}}>There is no active training session available to you right now.<br/>If you missed this month's window, you can request a 24-hour makeup access below.</p>
+          {moduleData && (
+            <button className="btn-primary" style={{marginTop:"20px",maxWidth:"260px",marginLeft:"auto",marginRight:"auto"}} disabled={requesting||requested} onClick={handleRequest}>
+              {requested ? "✓ Request Sent — Admin Notified" : requesting ? "Sending…" : "Request 24h Access →"}
+            </button>
+          )}
         </div>
       </div>
     </>
@@ -1003,6 +1059,7 @@ function AdminPanel({ user, onBack }) {
   const [employees, setEmployees] = useState([]);
   const [completions, setCompletions] = useState([]);
   const [graceRows, setGraceRows] = useState([]);
+  const [accessRequests, setAccessRequests] = useState([]);
   const [attemptRows, setAttemptRows] = useState([]);
   const [videoUrlInput, setVideoUrlInput] = useState("");
   const [windowOpenInput, setWindowOpenInput] = useState(true);
@@ -1055,6 +1112,8 @@ function AdminPanel({ user, onBack }) {
     setCompletions(comps || []);
     const { data: grace } = await supabase.from("grace_access").select("*").eq("module_id", moduleId);
     setGraceRows(grace || []);
+    const { data: reqs } = await supabase.from("access_requests").select("*").eq("module_id", moduleId);
+    setAccessRequests(reqs || []);
     const { data: attempts } = await supabase.from("quiz_attempts").select("*").eq("module_id", moduleId).order("attempted_at",{ascending:false});
     setAttemptRows(attempts || []);
     const { data: quizRows } = await supabase.from("quiz_questions").select("*").eq("module_id", moduleId).order("order_index");
@@ -1092,8 +1151,12 @@ function AdminPanel({ user, onBack }) {
       { employee_id: employeeId, module_id: moduleRow.id, expires_at: expiresAt },
       { onConflict: "employee_id,module_id" }
     );
+    await supabase.from("access_requests").update({ status: "granted", resolved_at: new Date().toISOString() })
+      .eq("employee_id", employeeId).eq("module_id", moduleRow.id);
     const { data: grace } = await supabase.from("grace_access").select("*").eq("module_id", moduleRow.id);
     setGraceRows(grace || []);
+    const { data: reqs } = await supabase.from("access_requests").select("*").eq("module_id", moduleRow.id);
+    setAccessRequests(reqs || []);
     setGrantingId(null);
   };
   const addQuizQ = () => setQuizDraft(d => [...d, { question_text:"", options:["","","",""], correct_answer:0 }]);
@@ -1252,6 +1315,22 @@ function AdminPanel({ user, onBack }) {
             </div>
             <div className="completion-bar-track"><div className="completion-bar-fill" style={{width:`${completionRate}%`}}/></div>
           </div>
+
+          {accessRequests.filter(r=>r.status==="pending").length > 0 && (
+            <div className="no-print" style={{background:"#fffbeb",border:"1px solid #fde68a",borderRadius:"16px",padding:"18px 22px",marginBottom:"18px"}}>
+              <div style={{fontWeight:700,fontSize:"14px",color:"#92400e",marginBottom:"10px"}}>🔔 Pending Access Requests ({accessRequests.filter(r=>r.status==="pending").length})</div>
+              {accessRequests.filter(r=>r.status==="pending").map(req => {
+                const emp = employees.find(e=>e.id===req.employee_id);
+                if (!emp) return null;
+                return (
+                  <div key={req.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 0",borderTop:"1px solid #fde68a"}}>
+                    <div style={{fontSize:"13px"}}><strong>{emp.name}</strong> <span style={{color:"var(--muted)"}}>({emp.e_no}, {emp.plant})</span></div>
+                    <button className="btn-outline" style={{padding:"5px 12px",fontSize:"11px"}} disabled={grantingId===emp.id} onClick={()=>handleGrantAccess(emp.id)}>{grantingId===emp.id?"Granting…":"Grant 24h Access"}</button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
 
           <div style={{background:"#fff",borderRadius:"18px",overflow:"hidden",border:"1px solid var(--border)",marginBottom:"18px"}}>
             <div style={{padding:"16px 22px",borderBottom:"1px solid var(--border)",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
@@ -1462,7 +1541,7 @@ export default function App() {
   if (appLoading) return <LoadingScreen text="Checking your training status…"/>;
   if (screen==="splash") return <SplashScreen onDone={()=>setScreen("login")}/>;
   if (screen==="login") return <LoginScreen onLogin={handleLogin}/>;
-  if (screen==="locked") return <LockedScreen user={user} onLogout={handleLogout}/>;
+  if (screen==="locked") return <LockedScreen user={user} moduleData={moduleData} onLogout={handleLogout}/>;
   if (screen==="admin") return <AdminPanel user={user} onBack={handleLogout}/>;
   if (screen==="done") return <AlreadyDoneScreen user={user} completion={completion} moduleData={moduleData} onLogout={handleLogout}/>;
   if (screen==="language") return <LanguageScreen user={user} onSelect={l=>{setLanguage(l);setScreen("video");}}/>;
