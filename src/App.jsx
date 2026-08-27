@@ -4,7 +4,8 @@ import { createClient } from "@supabase/supabase-js";
 // ─── SUPABASE CONNECTION ──────────────────────────────────────────────────────
 const supabase = createClient(
   "https://keapdqlxnslbdtfnfraa.supabase.co",
-  "sb_publishable_Eajulo5M-gdKfFC-vWUXcA_CEvxFvGd"
+  "sb_publishable_Eajulo5M-gdKfFC-vWUXcA_CEvxFvGd", 
+  { auth: { persistSession: false } }
 );
 
 // ─── LANGUAGES ────────────────────────────────────────────────────────────────
