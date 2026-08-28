@@ -1040,8 +1040,8 @@ function LockedScreen({ user, moduleData, onLogout }) {
   const [requested, setRequested] = useState(false);
 
   // Check how many days since window closed
-  const daysSinceClose = moduleData?.window_close
-    ? Math.floor((new Date() - new Date(moduleData.window_close)) / (1000 * 60 * 60 * 24))
+  const daysSinceClose = moduleData?.windowClose
+    ? Math.floor((new Date() - new Date(moduleData.windowClose)) / (1000 * 60 * 60 * 24))
     : 999;
   const canRequest = moduleData && daysSinceClose <= 5;
   const tooLate = moduleData && daysSinceClose > 5;
