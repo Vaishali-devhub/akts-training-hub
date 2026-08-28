@@ -362,6 +362,7 @@ const css = `
     .main-wide { max-width: 100%; padding: 0; }
     .stat-card, .module-card { break-inside: avoid; }
     table { font-size: 11px; }
+    .cert-print-area { border: 2px solid #2563eb !important; padding: 40px !important; }
   }
 
   .splash-screen {
@@ -997,12 +998,7 @@ function AlreadyDoneScreen({ user, completion, moduleData, onLogout }) {
 
   return (
     <>
-      <style>{css}
-        @media print {
-          .no-print { display: none !important; }
-          .cert-print-area { border: 2px solid #2563eb !important; padding: 40px !important; }
-        }
-      </style>
+      <style>{css}</style>
       <div className="no-print"><TopBar user={user} onLogout={onLogout} onAdmin={()=>{}}/></div>
       <div className="main" style={{maxWidth:"540px"}}>
         <div className="ack-hero no-print">
