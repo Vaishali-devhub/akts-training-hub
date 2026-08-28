@@ -4,8 +4,7 @@ import { createClient } from "@supabase/supabase-js";
 // ─── SUPABASE CONNECTION ──────────────────────────────────────────────────────
 const supabase = createClient(
   "https://keapdqlxnslbdtfnfraa.supabase.co",
-  "sb_publishable_Eajulo5M-gdKfFC-vWUXcA_CEvxFvGd", 
-  { auth: { persistSession: false } }
+  "sb_publishable_Eajulo5M-gdKfFC-vWUXcA_CEvxFvGd"
 );
 
 // ─── LANGUAGES ────────────────────────────────────────────────────────────────
@@ -663,7 +662,7 @@ function CheckpointModal({ checkpoint, onPass }) {
   );
 }
 
-function VideoScreen({ user, language, moduleData, onComplete }) {
+function VideoScreen({ user, language, moduleData, onComplete, onLogout }) {
   const [progress, setProgress] = useState(0);
   const [checkpoint, setCheckpoint] = useState(null);
   const [passed, setPassed] = useState([]);
@@ -798,7 +797,7 @@ function VideoScreen({ user, language, moduleData, onComplete }) {
     <>
       <style>{css}</style>
       <div style={{minHeight:"100vh"}}>
-        <TopBar user={user} onLogout={()=>{}} onAdmin={()=>{}}/>
+        <TopBar user={user} onLogout={onLogout} onAdmin={()=>{}}/>
         <div className="main">
           <div className="module-card">
             <div className="module-tag">STEP 2 OF 4 — TRAINING VIDEO</div>
@@ -856,7 +855,7 @@ function VideoScreen({ user, language, moduleData, onComplete }) {
   );
 }
 
-function QuizScreen({ user, language, moduleData, onComplete, onRewatch }) {
+function QuizScreen({ user, language, moduleData, onComplete, onRewatch, onLogout }) {
   const [current, setCurrent] = useState(0);
   const [answers, setAnswers] = useState({});
   const [submitted, setSubmitted] = useState(false);
@@ -882,7 +881,7 @@ function QuizScreen({ user, language, moduleData, onComplete, onRewatch }) {
       <>
         <style>{css}</style>
         <div style={{minHeight:"100vh"}}>
-          <TopBar user={user} onLogout={()=>{}} onAdmin={()=>{}}/>
+          <TopBar user={user} onLogout={onLogout} onAdmin={()=>{}}/>
           <div className="main">
             <div className="module-card"><div className="module-tag">STEP 3 OF 4 — RESULTS</div><StepIndicator current={pass?4:3}/></div>
             <div style={{background:"#fff",borderRadius:"18px",padding:"36px",textAlign:"center",border:"1px solid var(--border)"}}>
@@ -910,7 +909,7 @@ function QuizScreen({ user, language, moduleData, onComplete, onRewatch }) {
     <>
       <style>{css}</style>
       <div style={{minHeight:"100vh"}}>
-        <TopBar user={user} onLogout={()=>{}} onAdmin={()=>{}}/>
+        <TopBar user={user} onLogout={onLogout} onAdmin={()=>{}}/>
         <div className="main">
           <div className="module-card"><div className="module-tag">STEP 3 OF 4 — KNOWLEDGE CHECK</div><StepIndicator current={3}/></div>
           <div style={{background:"#fff",borderRadius:"18px",padding:"30px",border:"1px solid var(--border)"}}>
@@ -938,7 +937,7 @@ function QuizScreen({ user, language, moduleData, onComplete, onRewatch }) {
   );
 }
 
-function AcknowledgementScreen({ user, score, language, moduleData, onDone }) {
+function AcknowledgementScreen({ user, score, language, moduleData, onDone, onLogout }) {
   const [checked, setChecked] = useState(false);
   const [signed, setSigned] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -961,7 +960,7 @@ function AcknowledgementScreen({ user, score, language, moduleData, onDone }) {
     <>
       <style>{css}</style>
       <div style={{minHeight:"100vh"}}>
-        <TopBar user={user} onLogout={()=>{}} onAdmin={()=>{}}/>
+        <TopBar user={user} onLogout={onLogout} onAdmin={()=>{}}/>
         <div className="main">
           <div className="module-card"><div className="module-tag">STEP 4 OF 4 — ACKNOWLEDGEMENT</div><StepIndicator current={4}/></div>
           <div style={{background:"#fff",borderRadius:"18px",padding:"30px",border:"1px solid var(--border)"}}>
@@ -993,23 +992,44 @@ function AcknowledgementScreen({ user, score, language, moduleData, onDone }) {
 
 function AlreadyDoneScreen({ user, completion, moduleData, onLogout }) {
   const lang = LANGUAGES.find(l=>l.code===completion?.language);
+
+  const handlePrintCert = () => window.print();
+
   return (
     <>
-      <style>{css}</style>
-      <TopBar user={user} onLogout={onLogout} onAdmin={()=>{}}/>
+      <style>{css}
+        @media print {
+          .no-print { display: none !important; }
+          .cert-print-area { border: 2px solid #2563eb !important; padding: 40px !important; }
+        }
+      </style>
+      <div className="no-print"><TopBar user={user} onLogout={onLogout} onAdmin={()=>{}}/></div>
       <div className="main" style={{maxWidth:"540px"}}>
-        <div className="ack-hero">
+        <div className="ack-hero no-print">
           <div className="ack-icon">🎓</div>
           <div className="ack-title">Training Complete</div>
-          <div className="ack-sub">You have already completed this month's training. Your attendance has been recorded.</div>
+          <div className="ack-sub">You have successfully completed this month's training. Your attendance has been recorded.</div>
         </div>
-        <div className="cert-block">
+        <div className="cert-block cert-print-area">
+          <div style={{textAlign:"center",marginBottom:"8px"}}>
+            <img src={LOGO_DATA_URI} alt="AKTS" style={{width:"60px",height:"auto",marginBottom:"8px"}}/>
+          </div>
           <div className="cert-label">Certificate of Completion</div>
           <div className="cert-name">{user.name}</div>
+          <div className="cert-detail">Employee ID: {user.e_no} · {user.plant}</div>
           <div className="cert-detail">{moduleData?.title || "Internal Training"}</div>
-          <div className="cert-detail">Score: <strong>{completion?.score}/10</strong> · {lang?.flag} {lang?.label}</div>
+          <div className="cert-detail">Score: <strong>{completion?.score}/10</strong> ({(completion?.score||0)*10}%) · {lang?.flag} {lang?.label}</div>
           <div style={{fontSize:"12px",color:"#9ca3af",marginTop:"8px"}}>{completion?.completed_at ? new Date(completion.completed_at).toLocaleString("en-SG",{dateStyle:"full",timeStyle:"short"}) : ""}</div>
+          <div style={{marginTop:"20px",paddingTop:"16px",borderTop:"1px dashed #e5e7eb",fontSize:"11px",color:"#9ca3af",textAlign:"center"}}>
+            AKTS Training Hub — Official Digital Attendance Record
+          </div>
         </div>
+        <button className="btn-primary no-print" onClick={handlePrintCert} style={{marginBottom:"10px"}}>
+          🖨️ Print / Save Certificate as PDF
+        </button>
+        <button className="btn-outline no-print" onClick={onLogout} style={{width:"100%"}}>
+          Sign Out
+        </button>
       </div>
     </>
   );
@@ -1018,6 +1038,13 @@ function AlreadyDoneScreen({ user, completion, moduleData, onLogout }) {
 function LockedScreen({ user, moduleData, onLogout }) {
   const [requesting, setRequesting] = useState(false);
   const [requested, setRequested] = useState(false);
+
+  // Check how many days since window closed
+  const daysSinceClose = moduleData?.window_close
+    ? Math.floor((new Date() - new Date(moduleData.window_close)) / (1000 * 60 * 60 * 24))
+    : 999;
+  const canRequest = moduleData && daysSinceClose <= 5;
+  const tooLate = moduleData && daysSinceClose > 5;
 
   const handleRequest = async () => {
     if (!moduleData) return;
@@ -1043,12 +1070,41 @@ function LockedScreen({ user, moduleData, onLogout }) {
         <div style={{background:"#fff",borderRadius:"18px",padding:"48px 32px",border:"1px solid var(--border)"}}>
           <div className="locked-icon">🔐</div>
           <h2 style={{fontSize:"21px",fontWeight:700,marginBottom:"8px",letterSpacing:"-0.3px"}}>Training Window Closed</h2>
-          <p style={{color:"var(--muted)",fontSize:"14px",lineHeight:1.7}}>There is no active training session available to you right now.<br/>If you missed this month's window, you can request a 24-hour makeup access below.</p>
-          {moduleData && (
-            <button className="btn-primary" style={{marginTop:"20px",maxWidth:"260px",marginLeft:"auto",marginRight:"auto"}} disabled={requesting||requested} onClick={handleRequest}>
-              {requested ? "✓ Request Sent — Admin Notified" : requesting ? "Sending…" : "Request 24h Access →"}
-            </button>
+
+          {canRequest && (
+            <>
+              <p style={{color:"var(--muted)",fontSize:"14px",lineHeight:1.7}}>
+                You missed this month's training window.<br/>
+                You can request a 24-hour makeup access below — your admin will be notified.
+              </p>
+              <button className="btn-primary" style={{marginTop:"20px",maxWidth:"260px",marginLeft:"auto",marginRight:"auto"}} disabled={requesting||requested} onClick={handleRequest}>
+                {requested ? "✓ Request Sent — Admin Notified" : requesting ? "Sending…" : "Request 24h Access →"}
+              </button>
+            </>
           )}
+
+          {tooLate && (
+            <>
+              <p style={{color:"var(--muted)",fontSize:"14px",lineHeight:1.7}}>
+                The makeup access window has also passed.<br/>
+                Please contact your AKTS HSE admin directly for assistance.
+              </p>
+              <div style={{marginTop:"20px",padding:"16px",background:"var(--blue-light)",borderRadius:"12px",border:"1px solid var(--blue-border)",fontSize:"14px",color:"var(--blue-dark)",fontWeight:500}}>
+                📧 Contact AKTS HSE Admin
+              </div>
+            </>
+          )}
+
+          {!moduleData && (
+            <p style={{color:"var(--muted)",fontSize:"14px",lineHeight:1.7}}>
+              There is no active training session right now.<br/>
+              You will be notified when the next one opens.
+            </p>
+          )}
+
+          <button className="btn-outline" style={{marginTop:"16px",width:"100%"}} onClick={onLogout}>
+            Sign Out
+          </button>
         </div>
       </div>
     </>
@@ -1546,8 +1602,8 @@ export default function App() {
   if (screen==="admin") return <AdminPanel user={user} onBack={handleLogout}/>;
   if (screen==="done") return <AlreadyDoneScreen user={user} completion={completion} moduleData={moduleData} onLogout={handleLogout}/>;
   if (screen==="language") return <LanguageScreen user={user} onSelect={l=>{setLanguage(l);setScreen("video");}}/>;
-  if (screen==="video") return <VideoScreen user={user} language={language} moduleData={moduleData} onComplete={()=>setScreen("quiz")}/>;
-  if (screen==="quiz") return <QuizScreen user={user} language={language} moduleData={moduleData} onComplete={s=>{setQuizScore(s);setScreen("ack");}} onRewatch={()=>setScreen("video")}/>;
-  if (screen==="ack") return <AcknowledgementScreen user={user} score={quizScore} language={language} moduleData={moduleData} onDone={()=>setScreen("done")}/>;
+  if (screen==="video") return <VideoScreen user={user} language={language} moduleData={moduleData} onComplete={()=>setScreen("quiz")} onLogout={handleLogout}/>;
+  if (screen==="quiz") return <QuizScreen user={user} language={language} moduleData={moduleData} onComplete={s=>{setQuizScore(s);setScreen("ack");}} onRewatch={()=>setScreen("video")} onLogout={handleLogout}/>;
+  if (screen==="ack") return <AcknowledgementScreen user={user} score={quizScore} language={language} moduleData={moduleData} onDone={()=>setScreen("done")} onLogout={handleLogout}/>;
   return null;
 }
