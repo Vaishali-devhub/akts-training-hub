@@ -132,6 +132,25 @@ function formatDeadline(windowClose) {
     + " at " + new Date(windowClose).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
 }
 
+function extractYouTubeEmbedUrl(input) {
+  if (!input) return "";
+  // Already an embed URL
+  if (input.includes("youtube.com/embed/")) {
+    const base = input.split("?")[0];
+    return base;
+  }
+  // youtu.be short link
+  const shortMatch = input.match(/youtu\.be\/([a-zA-Z0-9_-]+)/);
+  if (shortMatch) return `https://www.youtube.com/embed/${shortMatch[1]}`;
+  // watch?v= link
+  const watchMatch = input.match(/[?&]v=([a-zA-Z0-9_-]+)/);
+  if (watchMatch) return `https://www.youtube.com/embed/${watchMatch[1]}`;
+  // Full iframe src
+  const iframeMatch = input.match(/src="([^"]+)"/);
+  if (iframeMatch) return extractYouTubeEmbedUrl(iframeMatch[1]);
+  return input;
+}
+
 function loadYouTubeAPI() {
   return new Promise((resolve) => {
     if (window.YT && window.YT.Player) { resolve(window.YT); return; }
@@ -1188,7 +1207,7 @@ function AdminPanel({ user, onBack }) {
     if (!moduleRow) return;
     setSaving(true); setSaveMsg("");
     const { error } = await supabase.from("training_modules").update({
-      video_url: videoUrlInput,
+      video_url: extractYouTubeEmbedUrl(videoUrlInput),
       window_open: windowOpenInput,
       window_close: windowCloseInput ? new Date(windowCloseInput).toISOString() : null,
     }).eq("id", moduleRow.id);
@@ -1265,7 +1284,7 @@ function AdminPanel({ user, onBack }) {
       module_code: moduleCode,
       title: newTitle,
       month_label: now.toLocaleDateString("en-US",{month:"long",year:"numeric"}),
-      video_url: newVideoUrl,
+      video_url: extractYouTubeEmbedUrl(newVideoUrl),
       window_open: true,
       window_close: newWindowClose ? new Date(newWindowClose).toISOString() : null,
       pass_score: 7,
@@ -1596,7 +1615,7 @@ export default function App() {
   if (screen==="login") return <LoginScreen onLogin={handleLogin}/>;
   if (screen==="locked") return <LockedScreen user={user} moduleData={moduleData} onLogout={handleLogout}/>;
   if (screen==="admin") return <AdminPanel user={user} onBack={handleLogout}/>;
-  if (screen==="done") return <AlreadyDoneScreen user={user} completion={completion} moduleData={moduleData} onLogout={handleLogout}/>;
+  if (screen==="done") return <AlreadyDoneScreen user={user} completion={completion || { score: quizScore, language, completed_at: new Date().toISOString() }} moduleData={moduleData} onLogout={handleLogout}/>;
   if (screen==="language") return <LanguageScreen user={user} onSelect={l=>{setLanguage(l);setScreen("video");}}/>;
   if (screen==="video") return <VideoScreen user={user} language={language} moduleData={moduleData} onComplete={()=>setScreen("quiz")} onLogout={handleLogout}/>;
   if (screen==="quiz") return <QuizScreen user={user} language={language} moduleData={moduleData} onComplete={s=>{setQuizScore(s);setScreen("ack");}} onRewatch={()=>setScreen("video")} onLogout={handleLogout}/>;
