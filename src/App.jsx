@@ -74,9 +74,18 @@ async function fetchActiveModule() {
     code: m.module_code,
     title: m.title,
     month: m.month_label,
-    videoUrl: m.video_url,
     passScore: m.pass_score || 7,
     windowClose: m.window_close,
+    // per-language video URLs — falls back to English if not set
+    videoUrls: {
+      english:  m.video_url || "",
+      mandarin: m.video_url_mandarin || m.video_url || "",
+      tamil:    m.video_url_tamil    || m.video_url || "",
+      burmese:  m.video_url_burmese  || m.video_url || "",
+      filipino: m.video_url_filipino || m.video_url || "",
+      malay:    m.video_url_malay    || m.video_url || "",
+      bangla:   m.video_url_bangla   || m.video_url || "",
+    },
     checkpoints: (checkpoints || []).map(c => ({
       at: c.at_percent,
       question: c.question_text,
@@ -695,7 +704,8 @@ function VideoScreen({ user, language, moduleData, onComplete, onLogout }) {
   const fsWrapRef = useRef(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const lang = LANGUAGES.find(l=>l.code===language);
-  const videoId = extractVideoId(moduleData.videoUrl);
+  const videoUrl = moduleData.videoUrls?.[language] || moduleData.videoUrls?.english || "";
+  const videoId = extractVideoId(videoUrl);
 
   useEffect(() => {
     const handler = () => setIsFullscreen(!!(document.fullscreenElement || document.webkitFullscreenElement));
@@ -1135,6 +1145,12 @@ function AdminPanel({ user, onBack }) {
   const [accessRequests, setAccessRequests] = useState([]);
   const [attemptRows, setAttemptRows] = useState([]);
   const [videoUrlInput, setVideoUrlInput] = useState("");
+  const [videoUrlMandarin, setVideoUrlMandarin] = useState("");
+  const [videoUrlTamil, setVideoUrlTamil] = useState("");
+  const [videoUrlBurmese, setVideoUrlBurmese] = useState("");
+  const [videoUrlFilipino, setVideoUrlFilipino] = useState("");
+  const [videoUrlMalay, setVideoUrlMalay] = useState("");
+  const [videoUrlBangla, setVideoUrlBangla] = useState("");
   const [windowOpenInput, setWindowOpenInput] = useState(true);
   const [windowCloseInput, setWindowCloseInput] = useState("");
   const [saveMsg, setSaveMsg] = useState("");
@@ -1178,6 +1194,12 @@ function AdminPanel({ user, onBack }) {
     const list = modulesList || allModules;
     const mod = list.find(m => m.id === moduleId);
     setVideoUrlInput(mod?.video_url || "");
+    setVideoUrlMandarin(mod?.video_url_mandarin || "");
+    setVideoUrlTamil(mod?.video_url_tamil || "");
+    setVideoUrlBurmese(mod?.video_url_burmese || "");
+    setVideoUrlFilipino(mod?.video_url_filipino || "");
+    setVideoUrlMalay(mod?.video_url_malay || "");
+    setVideoUrlBangla(mod?.video_url_bangla || "");
     setWindowOpenInput(mod?.window_open ?? true);
     setWindowCloseInput(mod?.window_close ? mod.window_close.slice(0,16) : "");
 
@@ -1208,7 +1230,13 @@ function AdminPanel({ user, onBack }) {
     if (!moduleRow) return;
     setSaving(true); setSaveMsg("");
     const { error } = await supabase.from("training_modules").update({
-      video_url: extractYouTubeEmbedUrl(videoUrlInput),
+      video_url:           extractYouTubeEmbedUrl(videoUrlInput),
+      video_url_mandarin:  videoUrlMandarin  ? extractYouTubeEmbedUrl(videoUrlMandarin)  : null,
+      video_url_tamil:     videoUrlTamil     ? extractYouTubeEmbedUrl(videoUrlTamil)     : null,
+      video_url_burmese:   videoUrlBurmese   ? extractYouTubeEmbedUrl(videoUrlBurmese)   : null,
+      video_url_filipino:  videoUrlFilipino  ? extractYouTubeEmbedUrl(videoUrlFilipino)  : null,
+      video_url_malay:     videoUrlMalay     ? extractYouTubeEmbedUrl(videoUrlMalay)     : null,
+      video_url_bangla:    videoUrlBangla    ? extractYouTubeEmbedUrl(videoUrlBangla)    : null,
       window_open: windowOpenInput,
       window_close: windowCloseInput ? new Date(windowCloseInput).toISOString() : null,
     }).eq("id", moduleRow.id);
