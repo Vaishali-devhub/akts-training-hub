@@ -1165,6 +1165,12 @@ function AdminPanel({ user, onBack }) {
   const [showNewMonth, setShowNewMonth] = useState(false);
   const [newTitle, setNewTitle] = useState("");
   const [newVideoUrl, setNewVideoUrl] = useState("");
+  const [newVideoUrlMandarin, setNewVideoUrlMandarin] = useState("");
+  const [newVideoUrlTamil, setNewVideoUrlTamil] = useState("");
+  const [newVideoUrlBurmese, setNewVideoUrlBurmese] = useState("");
+  const [newVideoUrlFilipino, setNewVideoUrlFilipino] = useState("");
+  const [newVideoUrlMalay, setNewVideoUrlMalay] = useState("");
+  const [newVideoUrlBangla, setNewVideoUrlBangla] = useState("");
   const [newWindowClose, setNewWindowClose] = useState("");
   const [creatingMonth, setCreatingMonth] = useState(false);
 
@@ -1314,6 +1320,12 @@ function AdminPanel({ user, onBack }) {
       title: newTitle,
       month_label: now.toLocaleDateString("en-US",{month:"long",year:"numeric"}),
       video_url: extractYouTubeEmbedUrl(newVideoUrl),
+      video_url_mandarin:  newVideoUrlMandarin  ? extractYouTubeEmbedUrl(newVideoUrlMandarin)  : null,
+      video_url_tamil:     newVideoUrlTamil     ? extractYouTubeEmbedUrl(newVideoUrlTamil)     : null,
+      video_url_burmese:   newVideoUrlBurmese   ? extractYouTubeEmbedUrl(newVideoUrlBurmese)   : null,
+      video_url_filipino:  newVideoUrlFilipino  ? extractYouTubeEmbedUrl(newVideoUrlFilipino)  : null,
+      video_url_malay:     newVideoUrlMalay     ? extractYouTubeEmbedUrl(newVideoUrlMalay)     : null,
+      video_url_bangla:    newVideoUrlBangla    ? extractYouTubeEmbedUrl(newVideoUrlBangla)    : null,
       window_open: true,
       window_close: newWindowClose ? new Date(newWindowClose).toISOString() : null,
       pass_score: 7,
@@ -1323,7 +1335,10 @@ function AdminPanel({ user, onBack }) {
     if (error) { setSaveMsg("⚠ Couldn't create new month — try again."); return; }
 
     setShowNewMonth(false);
-    setNewTitle(""); setNewVideoUrl(""); setNewWindowClose("");
+    setNewTitle(""); setNewVideoUrl("");
+    setNewVideoUrlMandarin(""); setNewVideoUrlTamil(""); setNewVideoUrlBurmese("");
+    setNewVideoUrlFilipino(""); setNewVideoUrlMalay(""); setNewVideoUrlBangla("");
+    setNewWindowClose("");
     setSaveMsg("✓ New training module created! Add your quiz questions below, then employees can start.");
     await loadAll();
   };
@@ -1485,8 +1500,35 @@ function AdminPanel({ user, onBack }) {
 
             {saveMsg && <div className={saveMsg.startsWith("✓")?"success-box":"error-box"}>{saveMsg}</div>}
 
-            <label className="form-label-light">Training Video URL (YouTube embed link)</label>
-            <input className="form-input-light" placeholder="https://www.youtube.com/embed/VIDEO_ID" value={videoUrlInput} onChange={e=>setVideoUrlInput(e.target.value)}/>
+            <label className="form-label-light">🇸🇬 English — Training Video URL (YouTube link)</label>
+            <input className="form-input-light" placeholder="https://www.youtube.com/embed/VIDEO_ID" value={videoUrlInput} onChange={e=>setVideoUrlInput(e.target.value)} style={{marginBottom:"10px"}}/>
+
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"12px",marginBottom:"18px"}}>
+              <div>
+                <label className="form-label-light">🇨🇳 Mandarin Video URL</label>
+                <input className="form-input-light" placeholder="https://youtu.be/... or embed link" value={videoUrlMandarin} onChange={e=>setVideoUrlMandarin(e.target.value)}/>
+              </div>
+              <div>
+                <label className="form-label-light">🇮🇳 Tamil Video URL</label>
+                <input className="form-input-light" placeholder="https://youtu.be/... or embed link" value={videoUrlTamil} onChange={e=>setVideoUrlTamil(e.target.value)}/>
+              </div>
+              <div>
+                <label className="form-label-light">🇲🇲 Burmese Video URL</label>
+                <input className="form-input-light" placeholder="https://youtu.be/... or embed link" value={videoUrlBurmese} onChange={e=>setVideoUrlBurmese(e.target.value)}/>
+              </div>
+              <div>
+                <label className="form-label-light">🇵🇭 Filipino Video URL</label>
+                <input className="form-input-light" placeholder="https://youtu.be/... or embed link" value={videoUrlFilipino} onChange={e=>setVideoUrlFilipino(e.target.value)}/>
+              </div>
+              <div>
+                <label className="form-label-light">🇲🇾 Malay Video URL</label>
+                <input className="form-input-light" placeholder="https://youtu.be/... or embed link" value={videoUrlMalay} onChange={e=>setVideoUrlMalay(e.target.value)}/>
+              </div>
+              <div>
+                <label className="form-label-light">🇧🇩 Bangla Video URL</label>
+                <input className="form-input-light" placeholder="https://youtu.be/... or embed link" value={videoUrlBangla} onChange={e=>setVideoUrlBangla(e.target.value)}/>
+              </div>
+            </div>
 
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"14px",marginBottom:"18px"}}>
               <div>
@@ -1519,8 +1561,34 @@ function AdminPanel({ user, onBack }) {
               <div style={{marginTop:"6px"}}>
                 <label className="form-label-light">Training Title</label>
                 <input className="form-input-light" placeholder="e.g. August 2026 Internal Training" value={newTitle} onChange={e=>setNewTitle(e.target.value)}/>
-                <label className="form-label-light">Training Video URL (YouTube embed link)</label>
-                <input className="form-input-light" placeholder="https://www.youtube.com/embed/VIDEO_ID" value={newVideoUrl} onChange={e=>setNewVideoUrl(e.target.value)}/>
+                <label className="form-label-light">🇸🇬 English — Training Video URL (YouTube link)</label>
+                <input className="form-input-light" placeholder="https://youtu.be/... or embed link" value={newVideoUrl} onChange={e=>setNewVideoUrl(e.target.value)} style={{marginBottom:"10px"}}/>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"12px",marginBottom:"18px"}}>
+                  <div>
+                    <label className="form-label-light">🇨🇳 Mandarin Video URL</label>
+                    <input className="form-input-light" placeholder="https://youtu.be/..." value={newVideoUrlMandarin} onChange={e=>setNewVideoUrlMandarin(e.target.value)}/>
+                  </div>
+                  <div>
+                    <label className="form-label-light">🇮🇳 Tamil Video URL</label>
+                    <input className="form-input-light" placeholder="https://youtu.be/..." value={newVideoUrlTamil} onChange={e=>setNewVideoUrlTamil(e.target.value)}/>
+                  </div>
+                  <div>
+                    <label className="form-label-light">🇲🇲 Burmese Video URL</label>
+                    <input className="form-input-light" placeholder="https://youtu.be/..." value={newVideoUrlBurmese} onChange={e=>setNewVideoUrlBurmese(e.target.value)}/>
+                  </div>
+                  <div>
+                    <label className="form-label-light">🇵🇭 Filipino Video URL</label>
+                    <input className="form-input-light" placeholder="https://youtu.be/..." value={newVideoUrlFilipino} onChange={e=>setNewVideoUrlFilipino(e.target.value)}/>
+                  </div>
+                  <div>
+                    <label className="form-label-light">🇲🇾 Malay Video URL</label>
+                    <input className="form-input-light" placeholder="https://youtu.be/..." value={newVideoUrlMalay} onChange={e=>setNewVideoUrlMalay(e.target.value)}/>
+                  </div>
+                  <div>
+                    <label className="form-label-light">🇧🇩 Bangla Video URL</label>
+                    <input className="form-input-light" placeholder="https://youtu.be/..." value={newVideoUrlBangla} onChange={e=>setNewVideoUrlBangla(e.target.value)}/>
+                  </div>
+                </div>
                 <label className="form-label-light">Window Closes (set ~48 hours from when you'll open it)</label>
                 <input type="datetime-local" className="form-input-light" value={newWindowClose} onChange={e=>setNewWindowClose(e.target.value)}/>
                 <button className="btn-primary" style={{maxWidth:"220px"}} disabled={creatingMonth} onClick={handleCreateNewMonth}>{creatingMonth?"Creating…":"Create New Month →"}</button>
@@ -1635,9 +1703,11 @@ export default function App() {
     setScreen("language");
     setAppLoading(false);
   };
-const handleLogout = () => {
-  window.location.reload();
-};
+
+  const handleLogout = () => {
+    window.location.reload(); // full page reload = guaranteed clean login screen
+  };
+
   if (appLoading) return <LoadingScreen text="Checking your training status…"/>;
   if (screen==="splash") return <SplashScreen onDone={()=>setScreen("login")}/>;
   if (screen==="login") return <LoginScreen key={loginKey} onLogin={handleLogin}/>;
