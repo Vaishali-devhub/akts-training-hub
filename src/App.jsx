@@ -584,10 +584,10 @@ function LoginScreen({ onLogin }) {
           {err && <div className="error-box">⚠ {err}</div>}
 
           <label className="form-label">Employee ID</label>
-          <input className="form-input" placeholder="e.g. A-049" value={id} onChange={e=>setId(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handle()}/>
+          <input className="form-input" placeholder="e.g. A-049" value={id} onChange={e=>setId(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handle()} autoComplete="off"/>
 
           <label className="form-label">Password</label>
-          <input className="form-input" type="password" placeholder="Enter your password" value={pw} onChange={e=>setPw(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handle()}/>
+          <input className="form-input" type="password" placeholder="Enter your password" value={pw} onChange={e=>setPw(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handle()} autoComplete="new-password"/>
 
           <button className="btn-primary" onClick={handle} disabled={loading}>{loading?"Verifying…":"Sign In →"}</button>
 
@@ -999,6 +999,7 @@ function AcknowledgementScreen({ user, score, language, moduleData, onDone, onLo
               <div className="cert-label">Training Completion Record</div>
               <div className="cert-name">{user.name}</div>
               <div className="cert-detail">Employee ID: {user.e_no} · {user.plant}</div>
+              {user.designation && <div className="cert-detail">{user.designation}</div>}
               <div className="cert-detail">{moduleData.title}</div>
               <div className="cert-detail">Score: <strong>{score}/{moduleData.quiz.length}</strong> · {lang?.flag} {lang?.label}</div>
               <div style={{fontSize:"12px",color:"#9ca3af",marginTop:"8px"}}>{now}</div>
@@ -1043,6 +1044,7 @@ function AlreadyDoneScreen({ user, completion, moduleData, onLogout }) {
           <div className="cert-label">Certificate of Completion</div>
           <div className="cert-name">{user.name}</div>
           <div className="cert-detail">Employee ID: {user.e_no} · {user.plant}</div>
+          {user.designation && <div className="cert-detail">{user.designation}</div>}
           <div className="cert-detail">{moduleData?.title || "Internal Training"}</div>
           <div className="cert-detail">Score: <strong>{completion?.score}/10</strong> ({(completion?.score||0)*10}%) · {lang?.flag} {lang?.label}</div>
           <div style={{fontSize:"12px",color:"#9ca3af",marginTop:"8px"}}>{completion?.completed_at ? new Date(completion.completed_at).toLocaleString("en-SG",{dateStyle:"full",timeStyle:"short"}) : ""}</div>
@@ -1186,7 +1188,7 @@ function AdminPanel({ user, onBack }) {
     const { data: modules } = await supabase.from("training_modules").select("*").order("created_at",{ascending:false});
     setAllModules(modules || []);
 
-    const { data: emps } = await supabase.from("employees").select("id, login_id, e_no, plant, name, role").eq("role","employee").order("name");
+    const { data: emps } = await supabase.from("employees").select("id, login_id, e_no, plant, name, role, designation").eq("role","employee").order("name");
     setEmployees(emps || []);
 
     if (modules && modules.length) {
@@ -1455,7 +1457,7 @@ function AdminPanel({ user, onBack }) {
             </div>
             <div style={{overflowX:"auto"}}>
             <table>
-              <thead><tr><th>Employee</th><th>Plant</th><th>Status</th><th>Score</th><th>Language</th><th>Completed At</th><th className="no-print">Action</th></tr></thead>
+              <thead><tr><th>Employee</th><th>Plant</th><th>Designation</th><th>Status</th><th>Score</th><th>Language</th><th>Completed At</th><th className="no-print">Action</th></tr></thead>
               <tbody>
                 {employees.map(emp=>{
                   const c = completions.find(c=>c.employee_id===emp.id);
@@ -1468,6 +1470,7 @@ function AdminPanel({ user, onBack }) {
                     <tr key={emp.id}>
                       <td><strong>{emp.name}</strong><br/><span style={{fontSize:"11px",color:"var(--muted)"}}>{emp.e_no}</span></td>
                       <td>{emp.plant}</td>
+                      <td>{emp.designation || "—"}</td>
                       <td>
                         {c
                           ? <span className="badge badge-green">✓ Done</span>
