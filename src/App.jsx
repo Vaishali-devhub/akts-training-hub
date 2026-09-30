@@ -1635,13 +1635,9 @@ export default function App() {
     setScreen("language");
     setAppLoading(false);
   };
-
-  const handleLogout = () => {
-    setUser(null); setLanguage(null); setModuleData(null); setCompletion(null); setQuizScore(0);
-    setLoginKey(k => k + 1); // force LoginScreen to remount with blank fields
-    setScreen("login");
-  };
-
+const handleLogout = () => {
+  window.location.reload();
+};
   if (appLoading) return <LoadingScreen text="Checking your training status…"/>;
   if (screen==="splash") return <SplashScreen onDone={()=>setScreen("login")}/>;
   if (screen==="login") return <LoginScreen key={loginKey} onLogin={handleLogin}/>;
