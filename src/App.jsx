@@ -1596,6 +1596,7 @@ export default function App() {
   const [moduleData, setModuleData] = useState(null);
   const [completion, setCompletion] = useState(null);
   const [appLoading, setAppLoading] = useState(false);
+  const [loginKey, setLoginKey] = useState(0); // increments on logout to force LoginScreen remount
 
   const handleLogin = async (employee) => {
     setUser(employee);
@@ -1636,12 +1637,14 @@ export default function App() {
   };
 
   const handleLogout = () => {
-    setUser(null); setScreen("login"); setLanguage(null); setModuleData(null); setCompletion(null);
+    setUser(null); setLanguage(null); setModuleData(null); setCompletion(null); setQuizScore(0);
+    setLoginKey(k => k + 1); // force LoginScreen to remount with blank fields
+    setScreen("login");
   };
 
   if (appLoading) return <LoadingScreen text="Checking your training status…"/>;
   if (screen==="splash") return <SplashScreen onDone={()=>setScreen("login")}/>;
-  if (screen==="login") return <LoginScreen onLogin={handleLogin}/>;
+  if (screen==="login") return <LoginScreen key={loginKey} onLogin={handleLogin}/>;
   if (screen==="locked") return <LockedScreen user={user} moduleData={moduleData} onLogout={handleLogout}/>;
   if (screen==="admin") return <AdminPanel user={user} onBack={handleLogout}/>;
   if (screen==="done") return <AlreadyDoneScreen user={user} completion={completion || { score: quizScore, language, completed_at: new Date().toISOString() }} moduleData={moduleData} onLogout={handleLogout}/>;
