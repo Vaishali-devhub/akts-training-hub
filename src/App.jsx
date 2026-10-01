@@ -782,6 +782,7 @@ function VideoScreen({ user, language, moduleData, onComplete, onLogout }) {
   const [passed, setPassed] = useState([]);
   const [started, setStarted] = useState(false);
   const [playerReady, setPlayerReady] = useState(false);
+  const [playerFallback, setPlayerFallback] = useState(false); // true = use plain iframe
   const [isPlaying, setIsPlaying] = useState(false);
   const playerRef = useRef(null);
   const intervalRef = useRef(null);
@@ -814,29 +815,36 @@ function VideoScreen({ user, language, moduleData, onComplete, onLogout }) {
     }
   };
 
-  // Load the real YouTube player once
+  // Load the real YouTube player once; fall back to plain iframe after 10s
   useEffect(() => {
+    if (!videoId) { setPlayerFallback(true); return; }
     let mounted = true;
+    // Fallback: if API doesn't initialise in 10 seconds, switch to plain iframe
+    const fallbackTimer = setTimeout(() => { if (mounted && !playerReady) setPlayerFallback(true); }, 10000);
     loadYouTubeAPI().then(YT => {
       if (!mounted) return;
-      playerRef.current = new YT.Player("yt-player-" + videoId, {
-        videoId,
-        playerVars: { rel: 0, modestbranding: 1, playsinline: 1, controls: 0, disablekb: 1, fs: 0 },
-        events: {
-          onReady: () => setPlayerReady(true),
-          onStateChange: (e) => {
-            if (e.data === YT.PlayerState.ENDED) {
-              setProgress(100);
-              if (intervalRef.current) clearInterval(intervalRef.current);
-            }
-            if (e.data === YT.PlayerState.PLAYING) setIsPlaying(true);
-            if (e.data === YT.PlayerState.PAUSED) setIsPlaying(false);
+      try {
+        playerRef.current = new YT.Player("yt-player-" + videoId, {
+          videoId,
+          playerVars: { rel: 0, modestbranding: 1, playsinline: 1, controls: 0, disablekb: 1, fs: 0 },
+          events: {
+            onReady: () => { clearTimeout(fallbackTimer); setPlayerReady(true); },
+            onError: () => { if (mounted) setPlayerFallback(true); },
+            onStateChange: (e) => {
+              if (e.data === YT.PlayerState.ENDED) {
+                setProgress(100);
+                if (intervalRef.current) clearInterval(intervalRef.current);
+              }
+              if (e.data === YT.PlayerState.PLAYING) setIsPlaying(true);
+              if (e.data === YT.PlayerState.PAUSED) setIsPlaying(false);
+            },
           },
-        },
-      });
-    });
+        });
+      } catch(e) { if (mounted) setPlayerFallback(true); }
+    }).catch(() => { if (mounted) setPlayerFallback(true); });
     return () => {
       mounted = false;
+      clearTimeout(fallbackTimer);
       if (intervalRef.current) clearInterval(intervalRef.current);
       if (playerRef.current && playerRef.current.destroy) playerRef.current.destroy();
     };
@@ -923,21 +931,33 @@ function VideoScreen({ user, language, moduleData, onComplete, onLogout }) {
           <div style={{background:"#fff",borderRadius:"18px",padding:"26px",border:"1px solid var(--border)"}}>
             <div className="video-fullscreen-wrap" ref={fsWrapRef}>
             <div className="video-wrap">
-              <div id={"yt-player-" + videoId} style={{width:"100%",height:"100%"}}/>
-              {!started && (
-                <div className="video-overlay">
-                  <button className="play-btn" onClick={handleStart} disabled={!playerReady}>▶</button>
-                  <div className="overlay-title">{playerReady ? "Ready to begin?" : "Loading video…"}</div>
-                  <div className="overlay-sub">{moduleData.checkpoints.length} checkpoint questions will appear during the video — it will pause automatically. You can pause or rewind to re-watch, but you cannot skip ahead. Do not close this page.</div>
-                </div>
+              {playerFallback ? (
+                <iframe
+                  src={`https://www.youtube.com/embed/${videoId}?rel=0&modestbranding=1&playsinline=1`}
+                  style={{width:"100%",height:"100%",border:"none"}}
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allowFullScreen
+                  title="Training Video"
+                />
+              ) : (
+                <>
+                  <div id={"yt-player-" + videoId} style={{width:"100%",height:"100%"}}/>
+                  {!started && (
+                    <div className="video-overlay">
+                      <button className="play-btn" onClick={handleStart} disabled={!playerReady}>▶</button>
+                      <div className="overlay-title">{playerReady ? "Ready to begin?" : "Loading video…"}</div>
+                      <div className="overlay-sub">{moduleData.checkpoints.length} checkpoint questions will appear during the video — it will pause automatically. You can pause or rewind to re-watch, but you cannot skip ahead. Do not close this page.</div>
+                    </div>
+                  )}
+                </>
               )}
             </div>
-            <div className="progress-track" style={{marginBottom:"6px"}}><div className="progress-fill" style={{width:`${progress}%`}}/></div>
+            {!playerFallback && <><div className="progress-track" style={{marginBottom:"6px"}}><div className="progress-fill" style={{width:`${progress}%`}}/></div>
             <div style={{display:"flex",justifyContent:"space-between",fontSize:"12px",color:isFullscreen?"rgba(255,255,255,0.6)":"var(--muted)",marginBottom:"14px"}}>
               <span>Video Progress</span>
               <span style={{fontWeight:600,color:progress>=100?"var(--green)":isFullscreen?"#fff":"var(--ink)"}}>{Math.round(progress)}%</span>
-            </div>
-            {started && progress<100 && !checkpoint && (
+            </div></>}
+            {!playerFallback && started && progress<100 && !checkpoint && (
               <div className="video-controls-row" style={{display:"flex",gap:"8px",marginBottom:"14px",alignItems:"center",flexWrap:"wrap"}}>
                 <button className="btn-outline" onClick={togglePlayPause}>{isPlaying ? "⏸ Pause" : "▶ Play"}</button>
                 <button className="btn-outline" onClick={rewind10}>⏪ Rewind 10s</button>
@@ -945,8 +965,9 @@ function VideoScreen({ user, language, moduleData, onComplete, onLogout }) {
                 <span className="video-controls-note" style={{fontSize:"11px",color:"var(--muted)",display:"flex",alignItems:"center",marginLeft:"4px"}}>Forward skipping is disabled — pause or rewind only</span>
               </div>
             )}
-            {checkpoint && <CheckpointModal checkpoint={checkpoint} onPass={()=>handleCheckpointPass(checkpoint)}/>}
+            {!playerFallback && checkpoint && <CheckpointModal checkpoint={checkpoint} onPass={()=>handleCheckpointPass(checkpoint)}/>}
             </div>
+            {!playerFallback && (
             <div style={{display:"flex",gap:"7px",flexWrap:"wrap"}}>
               {moduleData.checkpoints.map(cp=>(
                 <div key={cp.at} style={{fontSize:"12px",padding:"5px 12px",borderRadius:"100px",fontWeight:500,background:passed.includes(cp.at)?"#f0fdf4":"var(--bg)",color:passed.includes(cp.at)?"var(--green)":"var(--muted)",border:`1px solid ${passed.includes(cp.at)?"#bbf7d0":"var(--border)"}`}}>
@@ -954,7 +975,14 @@ function VideoScreen({ user, language, moduleData, onComplete, onLogout }) {
                 </div>
               ))}
             </div>
-            {progress>=100 && (
+            )}
+            {playerFallback && (
+              <div style={{marginTop:"18px",padding:"16px 20px",background:"#eff6ff",borderRadius:"12px",border:"1px solid #bfdbfe",display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:"12px"}}>
+                <div style={{fontSize:"13px",color:"#1d4ed8",fontWeight:500}}>Watch the video above, then proceed to the quiz when ready.</div>
+                <button className="btn-primary" style={{width:"auto",padding:"11px 22px"}} onClick={onComplete}>Proceed to Quiz →</button>
+              </div>
+            )}
+            {!playerFallback && progress>=100 && (
               <div style={{marginTop:"18px",padding:"16px 20px",background:"#f0fdf4",borderRadius:"12px",border:"1px solid #bbf7d0",display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:"12px"}}>
                 <div>
                   <div style={{fontWeight:700,color:"var(--green)",fontSize:"14px"}}>✓ Video Complete!</div>
