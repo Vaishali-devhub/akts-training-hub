@@ -551,14 +551,28 @@ function LoginScreen({ onLogin }) {
   const handle = async () => {
     if (!id.trim() || !pw) { setErr("Please enter both Employee ID and password."); return; }
     setErr(""); setLoading(true);
+    const attempt = async () => {
+      const { data, error } = await supabase.rpc("login_employee", {
+        p_login_id: id.trim().toLowerCase(),
+        p_password: pw,
+      });
+      return { data, error };
+    };
     try {
-      const { data, error } = await supabase
-        .from("employees")
-        .select("id, login_id, e_no, plant, name, role, designation")
-        .eq("login_id", id.trim().toLowerCase())
-        .eq("password", pw)
-        .limit(1);
-      if (error || !data || data.length === 0) {
+      let result = await attempt();
+      // Retry up to 3 times on network/server errors (not on wrong-credentials)
+      for (let i = 0; i < 2 && result.error; i++) {
+        setErr(`Connection issue, retrying… (${i + 2}/3)`);
+        await new Promise(r => setTimeout(r, 1500));
+        result = await attempt();
+      }
+      const { data, error } = result;
+      if (error) {
+        setErr("Server connection issue — please wait a moment and try again.");
+        setLoading(false);
+        return;
+      }
+      if (!data || data.length === 0) {
         setErr("Invalid Employee ID or password. Please try again.");
         setLoading(false);
         return;
