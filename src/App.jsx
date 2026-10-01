@@ -552,10 +552,12 @@ function LoginScreen({ onLogin }) {
     if (!id.trim() || !pw) { setErr("Please enter both Employee ID and password."); return; }
     setErr(""); setLoading(true);
     try {
-      const { data, error } = await supabase.rpc("login_employee", {
-        p_login_id: id.trim().toLowerCase(),
-        p_password: pw,
-      });
+      const { data, error } = await supabase
+        .from("employees")
+        .select("id, login_id, e_no, plant, name, role, designation")
+        .eq("login_id", id.trim().toLowerCase())
+        .eq("password", pw)
+        .limit(1);
       if (error || !data || data.length === 0) {
         setErr("Invalid Employee ID or password. Please try again.");
         setLoading(false);
