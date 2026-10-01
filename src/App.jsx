@@ -23,6 +23,68 @@ const LANGUAGES = [
 
 const ADMIN_NOTIFY_EMAIL = "prem.pkveera@gmail.com";
 
+// Offline fallback — used when Supabase is unreachable
+const OFFLINE_EMPLOYEES = [
+  { id:"ea453e84-a2e3-4f60-84b5-fee1ee5b9d6e", login_id:"a077",     e_no:"A-077",       plant:"HSE",        name:"Abdul Alfie Bin Abdul Rahim",        role:"employee", designation:null },
+  { id:"05e165a9-f5ee-40a8-b7de-7aadca5f3412", login_id:"gul001",   e_no:"GUL001",      plant:"Admin",      name:"Abhishek",                           role:"employee", designation:null },
+  { id:"e0aaaf79-c0b8-4f86-bdee-82cd289f2f18", login_id:"s002",     e_no:"S-002",       plant:"Management", name:"Adeline",                            role:"employee", designation:"SMAG HSE" },
+  { id:"0e914afc-b5ae-4f12-95ce-cf6aaf39b9de", login_id:"admin",    e_no:"ADMIN",       plant:"Management", name:"Admin Manager",                      role:"admin",    designation:null },
+  { id:"eda98b8f-622a-46bd-b56b-52a9e52940ca", login_id:"b298",     e_no:"B-298",       plant:"SAA",        name:"Anbukarasu Sathiskumar",             role:"employee", designation:null },
+  { id:"ae0363bc-fd0c-4a7d-b470-05746819e3bf", login_id:"b305",     e_no:"B-305",       plant:"SCO",        name:"Arumugam Santhosh",                  role:"employee", designation:null },
+  { id:"f0f7f1e2-0174-48f2-92b5-8bbf16e4ff70", login_id:"sds002",   e_no:"SDS002",      plant:"SMP",        name:"Aung Myat Min",                      role:"employee", designation:null },
+  { id:"3babc330-077d-4a7c-a350-b0847acf7176", login_id:"sds001",   e_no:"SDS001",      plant:"SCO",        name:"Aung Win soe",                       role:"employee", designation:null },
+  { id:"cbd92ad8-af68-41d2-a481-0fa4167653c1", login_id:"sds005",   e_no:"SDS005",      plant:"SAK",        name:"Bala Subra",                         role:"employee", designation:null },
+  { id:"0fe2c1d0-97cc-4b64-b71d-78274169c3ad", login_id:"sds003",   e_no:"SDS003",      plant:"Project",    name:"Bose Thesu",                         role:"employee", designation:null },
+  { id:"d5f67afc-7376-4f71-86b3-5103f20c2d41", login_id:"psv004",   e_no:"PSV004",      plant:"Project",    name:"Chanthru",                           role:"employee", designation:null },
+  { id:"5e2d667b-1269-4a86-b2fb-f2dcd0928e5a", login_id:"b262",     e_no:"B-262",       plant:"Project",    name:"Chockalingam Kalyanasundaram",       role:"employee", designation:null },
+  { id:"f02de141-2b1e-41c5-8c49-c71b2d241778", login_id:"scaei03",  e_no:"SCA E&I 03",  plant:"SMP",        name:"Deni",                               role:"employee", designation:null },
+  { id:"280503a1-779f-4153-b436-89c7bb41f1e2", login_id:"wlp001",   e_no:"WLP001",      plant:"Project",    name:"Dhanraj",                            role:"employee", designation:null },
+  { id:"7784e0e4-029f-489c-9e28-7acec62931dc", login_id:"sey001",   e_no:"SEY001",      plant:"Project",    name:"Giridharan",                         role:"employee", designation:null },
+  { id:"dd1bee03-2536-4236-a7dd-929f6a00a666", login_id:"a049",     e_no:"A-049",       plant:"SCO",        name:"Goh Chee Meng",                      role:"employee", designation:null },
+  { id:"3bb7b035-ea62-4a37-8db3-58a73cdbd1c8", login_id:"b290",     e_no:"B-290",       plant:"SAE",        name:"Govindasamy Gobu",                   role:"employee", designation:null },
+  { id:"130c2416-4499-4d73-af8e-56fc28c7ba98", login_id:"s005",     e_no:"S-005",       plant:"Management", name:"Hassan",                             role:"employee", designation:"AKTS HSE" },
+  { id:"536f9131-b5f6-4906-bc84-e9ceafe6382a", login_id:"gul002",   e_no:"GUL002",      plant:"Project",    name:"Hosen Md Nur Alam",                  role:"employee", designation:null },
+  { id:"de15c8da-e3ee-4803-8392-ae2297bbebef", login_id:"scaei04",  e_no:"SCA E&I 04",  plant:"SMM",        name:"Jun Shiang",                         role:"employee", designation:null },
+  { id:"30f3f370-12c2-4974-bd33-03ca99c49f1d", login_id:"psv002",   e_no:"PSV002",      plant:"Project",    name:"K. Manikandan",                      role:"employee", designation:null },
+  { id:"890731d1-61d0-4ba4-a905-d238a483b4bc", login_id:"scaei05",  e_no:"SCA E&I 05",  plant:"SMP",        name:"Kan",                                role:"employee", designation:null },
+  { id:"c7961f35-ecfa-4e4b-8ce6-5f2ab46b1f8b", login_id:"s003",     e_no:"S-003",       plant:"Management", name:"Kannan",                             role:"employee", designation:"SMAG HSE" },
+  { id:"9b64e215-3036-4fd3-afbf-7ca5e75f3e0d", login_id:"b292",     e_no:"B-292",       plant:"SMP",        name:"Karuppiah Radhakrishnan",            role:"employee", designation:null },
+  { id:"9acb4f9d-c855-4f57-a64a-9844d402b347", login_id:"b045",     e_no:"B-045",       plant:"SMM",        name:"Kaung Myat Thu",                     role:"employee", designation:null },
+  { id:"e44895cf-0d94-4cee-b574-a82c91ac0faa", login_id:"b316",     e_no:"B-316",       plant:"SCO",        name:"Kyaw Zin Latt",                      role:"employee", designation:null },
+  { id:"8fdd14df-0cb7-429e-baf8-67eaf25cb946", login_id:"b218",     e_no:"B-218",       plant:"All",        name:'Lau June Keat, Edmund',              role:"employee", designation:null },
+  { id:"8e2587ff-6a32-40d0-bbef-5b32957bf3df", login_id:"a018",     e_no:"A-018",       plant:"Project",    name:"Lim Wah Yen",                        role:"employee", designation:null },
+  { id:"4aa6caaa-65f2-4fb6-a040-97ae79a287db", login_id:"b269",     e_no:"B-269",       plant:"Project",    name:"Maung Htwe",                         role:"employee", designation:null },
+  { id:"64139838-9043-4d23-a2de-35b3008013ca", login_id:"psv003",   e_no:"PSV003",      plant:"Project",    name:"Maung Maung Lwin",                   role:"employee", designation:null },
+  { id:"bc9ae5ea-9b25-4cfa-b3eb-dfaf6f9e2c11", login_id:"b232",     e_no:"B-232",       plant:"Project",    name:"Muthaiah Murali",                    role:"employee", designation:null },
+  { id:"0094070b-96cb-44f0-9142-ccf5c7205cd5", login_id:"b314",     e_no:"B-314",       plant:"SMM",        name:"Neelakandan Parthiban",              role:"employee", designation:null },
+  { id:"d2c7062f-a64e-4426-b16d-b9689759c308", login_id:"psv005",   e_no:"PSV005",      plant:"HSE",        name:"Pogula Laxman",                      role:"employee", designation:null },
+  { id:"eaa5a59f-3c3b-4767-9911-dd6f30e5a8b9", login_id:"prem",     e_no:"ADMIN-2",     plant:"Management", name:"Prem",                               role:"admin",    designation:null },
+  { id:"6b55f406-1318-4604-a752-2e8dd4ab3ec0", login_id:"b288",     e_no:"B-288",       plant:"SAA",        name:"Ravichandran Ragul Gandhi",           role:"employee", designation:null },
+  { id:"304bbdc5-0976-4686-8248-ff2cc742a155", login_id:"b077",     e_no:"B-077",       plant:"SMP",        name:"Ri Naing Thin",                      role:"employee", designation:null },
+  { id:"156f37a1-4fa0-4cd9-8908-65b56ad58521", login_id:"scaei02",  e_no:"SCAE&I 02",   plant:"SCO",        name:"S Paramasivan",                      role:"employee", designation:null },
+  { id:"f666ec4c-2560-4769-b163-786b1faee944", login_id:"b312",     e_no:"B-312",       plant:"Project",    name:"Sarmiento Jun-Jun Andaya",           role:"employee", designation:null },
+  { id:"175083e4-3642-460f-a0a8-f4292e754c7f", login_id:"s004",     e_no:"S-004",       plant:"Management", name:"Sawai",                              role:"employee", designation:"AKTS Management" },
+  { id:"a878b83b-ed5f-4e2e-8267-e4a56aaa3216", login_id:"b279",     e_no:"B-279",       plant:"SMM",        name:"Sheik Alavudeen Mohamed Nawabjohn",  role:"employee", designation:null },
+  { id:"1d2cff80-a816-45b5-9568-591681f1dc2c", login_id:"pyr001",   e_no:"PYR001",      plant:"Project",    name:"Sheikh MD AL Mamun",                 role:"employee", designation:null },
+  { id:"1250be8a-68c3-44f5-a52b-1cd0a0c26621", login_id:"sey002",   e_no:"SEY002",      plant:"Project",    name:"Sikander Singh",                     role:"employee", designation:null },
+  { id:"e19faa79-cc74-4439-b647-739c73f7c58b", login_id:"a074",     e_no:"A-074",       plant:"Project",    name:"Sim Tiong Huat",                     role:"employee", designation:null },
+  { id:"1b2f3fa9-c86c-4e6e-83a6-9af1838b32d4", login_id:"b310",     e_no:"B-310",       plant:"SMP",        name:"Subramaniyan Karthikeyan",           role:"employee", designation:null },
+  { id:"3d572a71-f5e0-44cc-9711-37976c320aee", login_id:"b300",     e_no:"B-300",       plant:"SAE",        name:"Subramaniyan Thiyagarajan",          role:"employee", designation:null },
+  { id:"185eeb2c-9239-42bb-b517-d9fc0d94a75b", login_id:"b283",     e_no:"B-283",       plant:"SAK",        name:"Surulivel Arunkumar",                role:"employee", designation:null },
+  { id:"e0e56e15-9539-46e6-8882-c1ac556a8485", login_id:"sey003",   e_no:"SEY003",      plant:"Project",    name:"Tamilamudhan",                       role:"employee", designation:null },
+  { id:"5617d148-6f1b-4be5-89d7-447a6c419b39", login_id:"psv001",   e_no:"PSV001",      plant:"Project",    name:"Taring Anak Rugin",                  role:"employee", designation:null },
+  { id:"9e3eb7e7-0b04-4378-8c84-ed5cb8314bce", login_id:"b246",     e_no:"B-246",       plant:"SMM",        name:"Thet Naung",                         role:"employee", designation:null },
+  { id:"13f358c0-84b3-430b-a163-7c942ce30297", login_id:"b311",     e_no:"B-311",       plant:"SMP",        name:"Thiyagarajan Vinothkumar",           role:"employee", designation:null },
+  { id:"ce445da8-c69e-48a8-8053-e33c553d0404", login_id:"b313",     e_no:"B-313",       plant:"HSE",        name:"Veeramani Premkumar",                role:"employee", designation:null },
+  { id:"2f0b11a4-b55b-4e37-8a87-25b9aa0dfc94", login_id:"scaei01",  e_no:"SCAE&I 01",   plant:"SCA",        name:"Velton Teo",                         role:"employee", designation:null },
+  { id:"0eba4243-e3e5-4948-8ecf-5a241a1c55f1", login_id:"s001",     e_no:"S-001",       plant:"Management", name:"Winston",                            role:"employee", designation:"SMAG HSE" },
+  { id:"d329f23a-8c02-42ee-aacf-ed064cbebddd", login_id:"sds004",   e_no:"SDS004",      plant:"SMM",        name:"Zaw Phyo Aung",                      role:"employee", designation:null },
+  { id:"5067e4fb-ca1a-4e6e-8426-b87609e98abf", login_id:"b317",     e_no:"B-317",       plant:"Project",    name:"Zayar Lin",                          role:"employee", designation:null },
+];
+const OFFLINE_PASSWORDS = {
+  "a077":"akts2026","gul001":"akts2026","s002":"Akts@2026","admin":"admin888","b298":"akts2026","b305":"akts2026","sds002":"akts2026","sds001":"akts2026","sds005":"akts2026","sds003":"akts2026","psv004":"akts2026","b262":"akts2026","scaei03":"akts2026","wlp001":"akts2026","sey001":"akts2026","a049":"akts2026","b290":"akts2026","s005":"Akts@2026","gul002":"akts2026","scaei04":"akts2026","psv002":"akts2026","scaei05":"akts2026","s003":"Akts@2026","b292":"akts2026","b045":"akts2026","b316":"akts2026","b218":"akts2026","a018":"akts2026","b269":"akts2026","psv003":"akts2026","b232":"akts2026","b314":"akts2026","psv005":"akts2026","prem":"akts2026admin","b288":"akts2026","b077":"akts2026","scaei02":"akts2026","b312":"akts2026","s004":"Akts@2026","b279":"akts2026","pyr001":"akts2026","sey002":"akts2026","a074":"akts2026","b310":"akts2026","b300":"akts2026","b283":"akts2026","sey003":"akts2026","psv001":"akts2026","b246":"akts2026","b311":"akts2026","b313":"akts2026","scaei01":"akts2026","s001":"Akts@2026","sds004":"akts2026","b317":"akts2026"
+};
+
 async function notifyAdmin(subject, html) {
   try {
     await supabase.functions.invoke("notify", { body: { to: ADMIN_NOTIFY_EMAIL, subject, html } });
@@ -567,13 +629,19 @@ function LoginScreen({ onLogin }) {
         result = await attempt();
       }
       const { data, error } = result;
-      if (error) {
-        setErr("Server connection issue — please wait a moment and try again.");
-        setLoading(false);
-        return;
-      }
-      if (!data || data.length === 0) {
-        setErr("Invalid Employee ID or password. Please try again.");
+      if (error || !data || data.length === 0) {
+        // Supabase unreachable — try offline fallback
+        const loginKey = id.trim().toLowerCase();
+        const localUser = OFFLINE_EMPLOYEES.find(e => e.login_id === loginKey);
+        if (localUser && OFFLINE_PASSWORDS[loginKey] === pw) {
+          onLogin(localUser);
+          return;
+        }
+        if (error) {
+          setErr("Server connection issue — please wait a moment and try again.");
+        } else {
+          setErr("Invalid Employee ID or password. Please try again.");
+        }
         setLoading(false);
         return;
       }
